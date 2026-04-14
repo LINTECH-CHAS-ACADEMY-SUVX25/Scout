@@ -1,0 +1,6 @@
+[submodule "scout-sim/lvgl"]
+	path = scout-sim/lvgl
+	url = https://github.com/lvgl/lvgl.git
+[submodule "scout-sim/lv_drivers"]
+	path = scout-sim/lv_drivers
+	url = https://github.com/lvgl/lv_drivers.git
