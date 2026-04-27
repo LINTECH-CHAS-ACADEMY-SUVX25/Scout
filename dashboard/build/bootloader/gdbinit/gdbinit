@@ -1,0 +1,2 @@
+source /home/alex/esp/Scout/dashboard/build/bootloader/gdbinit/symbols
+source /home/alex/esp/Scout/dashboard/build/bootloader/gdbinit/connect
