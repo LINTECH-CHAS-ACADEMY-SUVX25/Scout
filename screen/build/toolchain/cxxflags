@@ -3,5 +3,5 @@
 -fno-builtin-memset
 -fno-builtin-bzero
 -mdisable-hardware-atomics
-"-specs=/home/alex/esp/Scout/dashboard/build/specs/picolibc.specs"
+"-specs=/home/alex/esp/Scout/screen/build/specs/picolibc.specs"
 -fno-rtti

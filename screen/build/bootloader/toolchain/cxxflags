@@ -1,4 +1,4 @@
-"-specs=/home/alex/esp/Scout/dashboard/build/bootloader/specs/picolibc.specs"
+"-specs=/home/alex/esp/Scout/screen/build/bootloader/specs/picolibc.specs"
 -mlongcalls
 -fno-builtin-memcpy
 -fno-builtin-memset

@@ -17,4 +17,4 @@ set confirm off
 set confirm on
 
 # Load application symbols
-file /home/alex/esp/Scout/dashboard/build/bootloader/bootloader.elf
+file /home/alex/esp/Scout/screen/build/bootloader/bootloader.elf

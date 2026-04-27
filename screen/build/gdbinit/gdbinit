@@ -1,2 +1,2 @@
-source /home/alex/esp/Scout/dashboard/build/gdbinit/symbols
-source /home/alex/esp/Scout/dashboard/build/gdbinit/connect
+source /home/alex/esp/Scout/screen/build/gdbinit/symbols
+source /home/alex/esp/Scout/screen/build/gdbinit/connect

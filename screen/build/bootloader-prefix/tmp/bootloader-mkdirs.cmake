@@ -5,18 +5,18 @@ cmake_minimum_required(VERSION 3.5)
 
 file(MAKE_DIRECTORY
   "/home/alex/esp/esp-idf/components/bootloader/subproject"
-  "/home/alex/esp/Scout/dashboard/build/bootloader"
-  "/home/alex/esp/Scout/dashboard/build/bootloader-prefix"
-  "/home/alex/esp/Scout/dashboard/build/bootloader-prefix/tmp"
-  "/home/alex/esp/Scout/dashboard/build/bootloader-prefix/src/bootloader-stamp"
-  "/home/alex/esp/Scout/dashboard/build/bootloader-prefix/src"
-  "/home/alex/esp/Scout/dashboard/build/bootloader-prefix/src/bootloader-stamp"
+  "/home/alex/esp/Scout/screen/build/bootloader"
+  "/home/alex/esp/Scout/screen/build/bootloader-prefix"
+  "/home/alex/esp/Scout/screen/build/bootloader-prefix/tmp"
+  "/home/alex/esp/Scout/screen/build/bootloader-prefix/src/bootloader-stamp"
+  "/home/alex/esp/Scout/screen/build/bootloader-prefix/src"
+  "/home/alex/esp/Scout/screen/build/bootloader-prefix/src/bootloader-stamp"
 )
 
 set(configSubDirs )
 foreach(subDir IN LISTS configSubDirs)
-    file(MAKE_DIRECTORY "/home/alex/esp/Scout/dashboard/build/bootloader-prefix/src/bootloader-stamp/${subDir}")
+    file(MAKE_DIRECTORY "/home/alex/esp/Scout/screen/build/bootloader-prefix/src/bootloader-stamp/${subDir}")
 endforeach()
 if(cfgdir)
-  file(MAKE_DIRECTORY "/home/alex/esp/Scout/dashboard/build/bootloader-prefix/src/bootloader-stamp${cfgdir}") # cfgdir has leading slash
+  file(MAKE_DIRECTORY "/home/alex/esp/Scout/screen/build/bootloader-prefix/src/bootloader-stamp${cfgdir}") # cfgdir has leading slash
 endif()

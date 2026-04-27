@@ -13,8 +13,8 @@ end
 
 # Load bootloader symbols
 set confirm off
-    add-symbol-file /home/alex/esp/Scout/dashboard/build/bootloader/bootloader.elf
+    add-symbol-file /home/alex/esp/Scout/screen/build/bootloader/bootloader.elf
 set confirm on
 
 # Load application symbols
-file /home/alex/esp/Scout/dashboard/build/scout_dashboard.elf
+file /home/alex/esp/Scout/screen/build/scout_screen.elf

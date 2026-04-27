@@ -39,10 +39,10 @@ endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for each subdirectory.
-  include("/home/alex/esp/Scout/dashboard/build/esp-idf/mbedtls/mbedtls/tf-psa-crypto/include/cmake_install.cmake")
-  include("/home/alex/esp/Scout/dashboard/build/esp-idf/mbedtls/mbedtls/tf-psa-crypto/core/cmake_install.cmake")
-  include("/home/alex/esp/Scout/dashboard/build/esp-idf/mbedtls/mbedtls/tf-psa-crypto/drivers/cmake_install.cmake")
-  include("/home/alex/esp/Scout/dashboard/build/esp-idf/mbedtls/mbedtls/tf-psa-crypto/pkgconfig/cmake_install.cmake")
+  include("/home/alex/esp/Scout/screen/build/esp-idf/mbedtls/mbedtls/tf-psa-crypto/include/cmake_install.cmake")
+  include("/home/alex/esp/Scout/screen/build/esp-idf/mbedtls/mbedtls/tf-psa-crypto/core/cmake_install.cmake")
+  include("/home/alex/esp/Scout/screen/build/esp-idf/mbedtls/mbedtls/tf-psa-crypto/drivers/cmake_install.cmake")
+  include("/home/alex/esp/Scout/screen/build/esp-idf/mbedtls/mbedtls/tf-psa-crypto/pkgconfig/cmake_install.cmake")
 
 endif()
 
