@@ -1,0 +1,199 @@
+Command: /home/alex/.espressif/python_env/idf6.1_py3.12_env/bin/python /home/alex/esp/esp-idf/tools/idf_monitor.py -p /dev/ttyUSB0 -b 115200 --toolchain-prefix xtensa-esp32-elf- --target esp32 --revision 0 /home/alex/esp/Scout/reciever/build/scout_reciever.elf /home/alex/esp/Scout/reciever/build/bootloader/bootloader.elf -m '/home/alex/.espressif/python_env/idf6.1_py3.12_env/bin/python' '/home/alex/esp/esp-idf/tools/idf.py'
+ets Jul 29 2019 12:21:46
+
+rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0040,len:6272
+load:0x40078000,len:15848
+load:0x40080400,len:3920
+entry 0x40080644
+[0;32mI (27) boot: ESP-IDF v6.1-dev-3824-g484e56869c 2nd stage bootloader[0m
+[0;32mI (27) boot: compile time Apr 27 2026 11:02:00[0m
+[0;32mI (28) boot: Multicore bootloader[0m
+[0;32mI (30) boot: chip revision: v3.1[0m
+[0;32mI (33) boot.esp32: SPI Speed      : 40MHz[0m
+[0;32mI (37) boot.esp32: SPI Mode       : DIO[0m
+[0;32mI (40) boot.esp32: SPI Flash Size : 2MB[0m
+[0;32mI (44) boot: Enabling RNG early entropy source...[0m
+[0;32mI (49) boot: Partition Table:[0m
+[0;32mI (51) boot: ## Label            Usage          Type ST Offset   Length[0m
+[0;32mI (57) boot:  0 nvs              WiFi data        01 02 00009000 00006000[0m
+[0;32mI (64) boot:  1 phy_init         RF data          01 01 0000f000 00001000[0m
+[0;32mI (71) boot:  2 factory          factory app      00 00 00010000 00100000[0m
+[0;32mI (77) boot: End of partition table[0m
+[0;32mI (80) esp_image: segment 0: paddr=00010020 vaddr=3f400020 size=1a1b4h (106932) map[0m
+[0;32mI (126) esp_image: segment 1: paddr=0002a1dc vaddr=3ffb0000 size=045a8h ( 17832) load[0m
+[0;32mI (133) esp_image: segment 2: paddr=0002e78c vaddr=40080000 size=0188ch (  6284) load[0m
+[0;32mI (136) esp_image: segment 3: paddr=00030020 vaddr=400d0020 size=86734h (550708) map[0m
+[0;32mI (334) esp_image: segment 4: paddr=000b675c vaddr=4008188c size=13d8ch ( 81292) load[0m
+[0;32mI (367) esp_image: segment 5: paddr=000ca4f0 vaddr=50000000 size=00028h (    40) load[0m
+[0;32mI (378) boot: Loaded app from partition at offset 0x10000[0m
+[0;32mI (378) boot: Disabling RNG early entropy source...[0m
+[0;32mI (389) cpu_start: Multicore app[0m
+[0;32mI (397) cpu_start: GPIO 3 and 1 are used as console UART I/O pins[0m
+[0;32mI (397) cpu_start: Pro cpu start user code[0m
+[0;32mI (397) cpu_start: cpu freq: 160000000 Hz[0m
+[0;32mI (399) app_init: Application information:[0m
+[0;32mI (403) app_init: Project name:     scout_reciever[0m
+[0;32mI (407) app_init: App version:      ca8a2ac-dirty[0m
+[0;32mI (412) app_init: Compile time:     Apr 27 2026 11:01:56[0m
+[0;32mI (417) app_init: ELF file SHA256:  68a575f9c...[0m
+[0;32mI (421) app_init: ESP-IDF:          v6.1-dev-3824-g484e56869c[0m
+[0;32mI (426) efuse_init: Min chip rev:     v0.0[0m
+[0;32mI (430) efuse_init: Max chip rev:     v3.99 [0m
+[0;32mI (434) efuse_init: Chip rev:         v3.1[0m
+[0;32mI (438) heap_init: Initializing. RAM available for dynamic allocation:[0m
+[0;32mI (445) heap_init: At 3FFAE6E0 len 00001920 (6 KiB): DRAM[0m
+[0;32mI (449) heap_init: At 3FFB8A98 len 00027568 (157 KiB): DRAM[0m
+[0;32mI (455) heap_init: At 3FFE0440 len 00003AE0 (14 KiB): D/IRAM[0m
+[0;32mI (460) heap_init: At 3FFE4350 len 0001BCB0 (111 KiB): D/IRAM[0m
+[0;32mI (466) heap_init: At 40095618 len 0000A9E8 (42 KiB): IRAM[0m
+[0;32mI (472) spi_flash: detected chip: generic[0m
+[0;32mI (475) spi_flash: flash io: dio[0m
+[0;33mW (478) spi_flash: Detected size(4096k) larger than the size in the binary image header(2048k). Using the size in the binary image header.[0m
+[0;32mI (492) main_task: Started on CPU0[0m
+[0;32mI (502) main_task: Calling app_main()[0m
+[0;32mI (502) scout_cam: Scout CAM starting[0m
+[0;32mI (542) wifi:wifi driver task: 3ffc1688, prio:23, stack:6656, core=0[0m
+[0;32mI (552) wifi:wifi firmware version: 756b30f[0m
+[0;32mI (552) wifi:wifi certification version: v7.0[0m
+[0;32mI (552) wifi:config NVS flash: enabled[0m
+[0;32mI (552) wifi:config nano formatting: disabled[0m
+[0;32mI (562) wifi:Init data frame dynamic rx buffer num: 32[0m
+[0;32mI (562) wifi:Init static rx mgmt buffer num: 5[0m
+[0;32mI (572) wifi:Init management short buffer num: 32[0m
+[0;32mI (572) wifi:Init dynamic tx buffer num: 32[0m
+[0;32mI (582) wifi:Init static rx buffer size: 1600[0m
+[0;32mI (582) wifi:Init static rx buffer num: 10[0m
+[0;32mI (582) wifi:Init dynamic rx buffer num: 32[0m
+[0;32mI (592) wifi_init: rx ba win: 6[0m
+[0;32mI (592) wifi_init: accept mbox: 6[0m
+[0;32mI (592) wifi_init: tcpip mbox: 32[0m
+[0;32mI (602) wifi_init: udp mbox: 6[0m
+[0;32mI (602) wifi_init: tcp mbox: 6[0m
+[0;32mI (602) wifi_init: tcp tx win: 5760[0m
+[0;32mI (612) wifi_init: tcp rx win: 5760[0m
+[0;32mI (612) wifi_init: tcp mss: 1440[0m
+[0;32mI (612) wifi_init: WiFi IRAM OP enabled[0m
+[0;32mI (612) wifi_init: WiFi RX IRAM OP enabled[0m
+[0;33mW (622) wifi:Password length matches WPA2 standards, authmode threshold changes from OPEN to WPA2[0m
+[0;32mI (652) phy_init: phy_version 4863,a3a4459,Oct 28 2025,14:30:06[0m
+[0;32mI (742) phy_init: Saving new calibration data due to checksum failure or outdated calibration data, mode(0)[0m
+[0;32mI (762) wifi:mode : sta (28:05:a5:31:06:94)[0m
+[0;32mI (762) wifi:enable tsf[0m
+[0;32mI (762) scout_cam: Connecting to Scout_AP...[0m
+[0;32mI (1042) wifi:new:<1,1>, old:<1,0>, ap:<255,255>, sta:<1,1>, prof:1, snd_ch_cfg:0x0[0m
+[0;32mI (1042) wifi:state: init -> auth (0xb0)[0m
+[0;32mI (1052) wifi:state: auth -> assoc (0x0)[0m
+[0;32mI (1082) wifi:state: assoc -> run (0x10)[0m
+[0;32mI (1142) wifi:connected with Scout_AP, aid = 1, channel 1, 40U, bssid = 90:70:69:0a:25:49[0m
+[0;32mI (1142) wifi:security: WPA2-PSK, phy: bgn, rssi: -41, cipher(pairwise:0x3, group:0x3), pmf:1[0m
+[0;32mI (1162) wifi:pm start, type: 1[0m
+
+[0;32mI (1162) wifi:dp: 1, bi: 102400, li: 3, scale listen interval from 307200 us to 307200 us[0m
+[0;32mI (1162) wifi:AP's beacon interval = 102400 us, DTIM period = 1[0m
+[0;32mI (2202) esp_netif_handlers: sta ip: 192.168.4.2, mask: 255.255.255.0, gw: 192.168.4.1[0m
+[0;32mI (2202) scout_cam: Connected — IP: 192.168.4.2[0m
+[0;32mI (2202) scout_cam: Sending pings to 192.168.4.1:3333[0m
+[0;32mI (2212) scout_cam: Sent: PING 0[0m
+[0;32mI (2222) wifi:<ba-add>idx:0 (ifx:0, 90:70:69:0a:25:49), tid:0, ssn:0, winSize:64[0m
+[0;32mI (3212) scout_cam: Sent: PING 1[0m
+[0;32mI (4212) scout_cam: Sent: PING 2[0m
+[0;32mI (5212) scout_cam: Sent: PING 3[0m
+[0;32mI (6212) scout_cam: Sent: PING 4[0m
+[0;32mI (7212) scout_cam: Sent: PING 5[0m
+[0;32mI (8212) scout_cam: Sent: PING 6[0m
+[0;32mI (9212) scout_cam: Sent: PING 7[0m
+[0;32mI (10212) scout_cam: Sent: PING 8[0m
+[0;32mI (11212) scout_cam: Sent: PING 9[0m
+[0;32mI (12212) scout_cam: Sent: PING 10[0m
+[0;32mI (13212) scout_cam: Sent: PING 11[0m
+[0;32mI (14212) scout_cam: Sent: PING 12[0m
+[0;32mI (15212) scout_cam: Sent: PING 13[0m
+[0;32mI (16212) scout_cam: Sent: PING 14[0m
+[0;32mI (17212) scout_cam: Sent: PING 15[0m
+[0;32mI (18212) scout_cam: Sent: PING 16[0m
+[0;32mI (19212) scout_cam: Sent: PING 17[0m
+[0;32mI (20212) scout_cam: Sent: PING 18[0m
+[0;32mI (21212) scout_cam: Sent: PING 19[0m
+[0;32mI (22212) scout_cam: Sent: PING 20[0m
+[0;32mI (23212) scout_cam: Sent: PING 21[0m
+[0;32mI (24212) scout_cam: Sent: PING 22[0m
+[0;32mI (25212) scout_cam: Sent: PING 23[0m
+[0;32mI (26212) scout_cam: Sent: PING 24[0m
+[0;32mI (27212) scout_cam: Sent: PING 25[0m
+[0;32mI (28212) scout_cam: Sent: PING 26[0m
+[0;32mI (29212) scout_cam: Sent: PING 27[0m
+[0;32mI (30212) scout_cam: Sent: PING 28[0m
+[0;32mI (31212) scout_cam: Sent: PING 29[0m
+[0;32mI (32212) scout_cam: Sent: PING 30[0m
+[0;32mI (33212) scout_cam: Sent: PING 31[0m
+[0;32mI (34212) scout_cam: Sent: PING 32[0m
+[0;32mI (35212) scout_cam: Sent: PING 33[0m
+[0;32mI (36212) scout_cam: Sent: PING 34[0m
+[0;32mI (37212) scout_cam: Sent: PING 35[0m
+[0;32mI (38212) scout_cam: Sent: PING 36[0m
+[0;32mI (39212) scout_cam: Sent: PING 37[0m
+[0;32mI (40212) scout_cam: Sent: PING 38[0m
+[0;32mI (41212) scout_cam: Sent: PING 39[0m
+[0;32mI (42212) scout_cam: Sent: PING 40[0m
+[0;32mI (43212) scout_cam: Sent: PING 41[0m
+[0;32mI (44212) scout_cam: Sent: PING 42[0m
+[0;32mI (45212) scout_cam: Sent: PING 43[0m
+[0;32mI (46212) scout_cam: Sent: PING 44[0m
+[0;32mI (47212) scout_cam: Sent: PING 45[0m
+[0;32mI (48212) scout_cam: Sent: PING 46[0m
+[0;32mI (49212) scout_cam: Sent: PING 47[0m
+[0;32mI (50212) scout_cam: Sent: PING 48[0m
+[0;32mI (51212) scout_cam: Sent: PING 49[0m
+[0;32mI (52212) scout_cam: Sent: PING 50[0m
+[0;32mI (53212) scout_cam: Sent: PING 51[0m
+[0;32mI (54212) scout_cam: Sent: PING 52[0m
+[0;32mI (55212) scout_cam: Sent: PING 53[0m
+[0;32mI (56212) scout_cam: Sent: PING 54[0m
+[0;32mI (57212) scout_cam: Sent: PING 55[0m
+[0;32mI (58212) scout_cam: Sent: PING 56[0m
+[0;32mI (59212) scout_cam: Sent: PING 57[0m
+[0;32mI (60212) scout_cam: Sent: PING 58[0m
+[0;32mI (61212) scout_cam: Sent: PING 59[0m
+[0;32mI (62212) scout_cam: Sent: PING 60[0m
+[0;32mI (63212) scout_cam: Sent: PING 61[0m
+[0;32mI (64212) scout_cam: Sent: PING 62[0m
+[0;32mI (65212) scout_cam: Sent: PING 63[0m
+[0;32mI (66212) scout_cam: Sent: PING 64[0m
+[0;32mI (67212) scout_cam: Sent: PING 65[0m
+[0;32mI (68212) scout_cam: Sent: PING 66[0m
+[0;32mI (69212) scout_cam: Sent: PING 67[0m
+[0;32mI (70212) scout_cam: Sent: PING 68[0m
+[0;32mI (71212) scout_cam: Sent: PING 69[0m
+[0;32mI (72212) scout_cam: Sent: PING 70[0m
+[0;32mI (73212) scout_cam: Sent: PING 71[0m
+[0;32mI (74212) scout_cam: Sent: PING 72[0m
+[0;32mI (75212) scout_cam: Sent: PING 73[0m
+[0;32mI (76212) scout_cam: Sent: PING 74[0m
+[0;32mI (77212) scout_cam: Sent: PING 75[0m
+[0;32mI (78212) scout_cam: Sent: PING 76[0m
+[0;32mI (79212) scout_cam: Sent: PING 77[0m
+[0;32mI (80212) scout_cam: Sent: PING 78[0m
+[0;32mI (81212) scout_cam: Sent: PING 79[0m
+[0;32mI (82212) scout_cam: Sent: PING 80[0m
+[0;32mI (83212) scout_cam: Sent: PING 81[0m
+[0;32mI (84212) scout_cam: Sent: PING 82[0m
+[0;32mI (85212) scout_cam: Sent: PING 83[0m
+[0;32mI (86212) scout_cam: Sent: PING 84[0m
+[0;32mI (87212) scout_cam: Sent: PING 85[0m
+[0;32mI (88212) scout_cam: Sent: PING 86[0m
+[0;32mI (89212) scout_cam: Sent: PING 87[0m
+[0;32mI (90212) scout_cam: Sent: PING 88[0m
+[0;32mI (91212) scout_cam: Sent: PING 89[0m
+[0;32mI (92212) scout_cam: Sent: PING 90[0m
+[0;32mI (93212) scout_cam: Sent: PING 91[0m
+[0;32mI (94212) scout_cam: Sent: PING 92[0m
+[0;32mI (95212) scout_cam: Sent: PING 93[0m
+[0;32mI (96212) scout_cam: Sent: PING 94[0m
+[0;32mI (97212) scout_cam: Sent: PING 95[0m
+[0;32mI (98212) scout_cam: Sent: PING 96[0m
+[0;32mI (99212) scout_cam: Sent: PING 97[0m
+[0;32mI (100212) scout_cam: Sent: PING 98[0m

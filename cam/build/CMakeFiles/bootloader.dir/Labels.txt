@@ -1,0 +1,13 @@
+# Target labels
+ bootloader
+# Source files and their labels
+/home/alex/esp/Scout/reciever/build/CMakeFiles/bootloader
+/home/alex/esp/Scout/reciever/build/CMakeFiles/bootloader.rule
+/home/alex/esp/Scout/reciever/build/CMakeFiles/bootloader-complete.rule
+/home/alex/esp/Scout/reciever/build/bootloader-prefix/src/bootloader-stamp/bootloader-build.rule
+/home/alex/esp/Scout/reciever/build/bootloader-prefix/src/bootloader-stamp/bootloader-configure.rule
+/home/alex/esp/Scout/reciever/build/bootloader-prefix/src/bootloader-stamp/bootloader-download.rule
+/home/alex/esp/Scout/reciever/build/bootloader-prefix/src/bootloader-stamp/bootloader-install.rule
+/home/alex/esp/Scout/reciever/build/bootloader-prefix/src/bootloader-stamp/bootloader-mkdir.rule
+/home/alex/esp/Scout/reciever/build/bootloader-prefix/src/bootloader-stamp/bootloader-patch.rule
+/home/alex/esp/Scout/reciever/build/bootloader-prefix/src/bootloader-stamp/bootloader-update.rule
