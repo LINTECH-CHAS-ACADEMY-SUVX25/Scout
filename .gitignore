@@ -1,0 +1,16 @@
+# ESP-IDF build output
+build/
+sdkconfig
+sdkconfig.old
+
+# Dependencies fetched by idf_component_manager
+managed_components/
+dependencies.lock
+
+# Scout simulator build output
+scout-sim/build/
+
+# IDE / editor
+.vscode/
+*.swp
+*.swo
