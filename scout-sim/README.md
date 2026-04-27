@@ -44,15 +44,32 @@ Alert-nivån uppdateras automatiskt: OK → VARNING → FARA.
 
 ## Förutsättningar
 
+### Ubuntu / Debian
 ```bash
-# Ubuntu / Debian
+sudo apt update
+sudo apt install build-essential cmake libsdl2-dev git
+```
+
+### macOS
+```bash
+brew install cmake sdl2
+```
+
+### Windows (WSL2 - Rekommenderat)
+```bash
+# Installera WSL2 med Ubuntu från Microsoft Store
+# Sedan i WSL2-terminalen:
+sudo apt update
 sudo apt install build-essential cmake libsdl2-dev git
 
-# macOS
-brew install cmake sdl2
+# För att köra GUI (SDL-fönster) från WSL2:
+# Installera VcXsrv eller X410 på Windows
+export DISPLAY=:0
+```
 
-# Windows (MSYS2)
-pacman -S mingw-w64-x86_64-cmake mingw-w64-x86_64-SDL2
+### Windows (MSYS2 - Alternativ)
+```bash
+pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-SDL2 git
 ```
 
 ## Bygg & kör
