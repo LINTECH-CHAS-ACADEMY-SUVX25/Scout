@@ -60,7 +60,12 @@ static void lvgl_handler_task(void *arg)
         lv_timer_handler();
         if (g_new_frame) {
             g_new_frame = false;
-            memcpy(g_canvas_buf, g_frame, sizeof(g_canvas_buf));
+            uint16_t *src = (uint16_t *)g_frame;
+            uint16_t *dst = (uint16_t *)g_canvas_buf;
+            for (int i = 0; i < CAM_W * CAM_H; i++) {
+                uint16_t px = src[i];
+                dst[i] = (px >> 8) | (px << 8);
+            }
             lv_obj_invalidate(g_canvas);
         }
         vTaskDelay(pdMS_TO_TICKS(10));
@@ -172,8 +177,8 @@ void app_main(void)
     indev_drv.read_cb = touch_read_cb;
     lv_indev_drv_register(&indev_drv);
 
-    /* dark blue background */
-    lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(0x4F48A1), 0);
+    /* background */
+    lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(0x966FDE), 0);
 
     /* camera canvas centered, scaled 4x */
     g_canvas = lv_canvas_create(lv_scr_act());
