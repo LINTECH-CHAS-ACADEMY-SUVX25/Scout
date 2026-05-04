@@ -181,7 +181,7 @@ void app_main(void)
     lv_obj_align(g_canvas, LV_ALIGN_CENTER, 0, 0);
     lv_canvas_fill_bg(g_canvas, lv_color_hex(0x111111), LV_OPA_COVER);
     lv_img_set_pivot(g_canvas, CAM_W / 2, CAM_H / 2);
-    lv_img_set_zoom(g_canvas, 1024);  /* 256 = 1x, 1024 = 4x */
+    lv_img_set_zoom(g_canvas, 640);  /* 160 = 1x, 640 = 4x */
 
     xTaskCreate(lvgl_tick_task,    "lvgl_tick",    2048, NULL, 5, NULL);
     xTaskCreate(lvgl_handler_task, "lvgl_handler", 4096, NULL, 4, NULL);
