@@ -79,7 +79,6 @@ esp_lcd_panel_handle_t waveshare_esp32_s3_rgb_lcd_init()
         },
         .flags = {
             .fb_in_psram = 1, // Use PSRAM for framebuffers to save internal SRAM
-            .double_fb = 1, // Vsync Kanske????
         },
     };
 
