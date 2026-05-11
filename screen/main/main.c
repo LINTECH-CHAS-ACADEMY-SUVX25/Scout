@@ -1,5 +1,5 @@
 #include <string.h>
-#include <stdio.h>
+#include <inttypes.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
@@ -8,218 +8,89 @@
 #include "nvs_flash.h"
 #include "esp_netif.h"
 #include "lwip/sockets.h"
-#include "lwip/inet.h"
-#include "i2c.h"
-#include "io_extension.h"
+#include "lvgl.h"
+#include "gt911.h"
 #include "rgb_lcd_port.h"
-#include "font8x8.h"
+#include "jpeg_decoder.h"
 
-static const char *MAIN_TAG = "scout_screen";
+static const char *TAG = "screen";
 
-#define AP_SSID      "Scout_AP"
-#define AP_PASS      "scout1234"
-#define AP_MAX_STA   4
-#define VID_PORT     3334
+#define CAM_W    480
+#define CAM_H    320
+#define VID_PORT 3334
 
-#define LCD_W        EXAMPLE_LCD_H_RES
-#define LCD_H        EXAMPLE_LCD_V_RES
-#define FONT_SCALE   2
-#define CHAR_W       (8 * FONT_SCALE)
-#define CHAR_H       (8 * FONT_SCALE)
-
-#define COL_CYAN     0x07FFU
-#define COL_YELLOW   0xFFE0U
-#define COL_GRAY     0x8410U
-
-/* ---- Double-buffer state ---- */
 static esp_lcd_panel_handle_t g_panel;
-static void    *g_fbs[2];      /* both DMA framebuffers */
-static int      g_back;        /* index of the buffer we write to */
-static uint16_t *g_fb;         /* always == g_fbs[g_back] */
-static SemaphoreHandle_t g_vsync_sem;
+static void *g_fb[2];
+static esp_lcd_touch_handle_t g_touch;
 
-/* Vsync ISR → give semaphore so render task can swap on the right tick */
-static bool IRAM_ATTR vsync_cb(esp_lcd_panel_handle_t panel,
-                                const esp_lcd_rgb_panel_event_data_t *data,
-                                void *user_ctx)
+/* ---- LVGL callbacks ---- */
+static void lvgl_flush_cb(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color_p)
 {
-    BaseType_t woken = pdFALSE;
-    xSemaphoreGiveFromISR((SemaphoreHandle_t)user_ctx, &woken);
-    return woken == pdTRUE;
+    esp_lcd_panel_draw_bitmap(g_panel, area->x1, area->y1,
+                              area->x2 + 1, area->y2 + 1, color_p);
+    lv_disp_flush_ready(drv);
 }
 
-/*
- * Present the current back buffer: schedule the driver to flip to it on the
- * next vsync, wait for the flip to complete, then switch g_fb to the other
- * buffer.  Passing g_fbs[g_back] as the bitmap source is a zero-copy trick —
- * the driver writes to the *inactive* buffer; when source == inactive, it is a
- * self-copy (no-op) and the driver simply changes which buffer the DMA reads.
- */
-static void present_frame(void)
+static void touch_read_cb(lv_indev_drv_t *drv, lv_indev_data_t *data)
 {
-    /* With a bounce-buffer RGB panel, draw_bitmap() updates the PSRAM read
-     * pointer IMMEDIATELY (not deferred to the next vsync).  Calling it
-     * mid-frame lets the bounce DMA switch buffers while active lines are
-     * already being scanned → tear.
-     *
-     * Fix: wait for vsync first (we are now in the ~2.8 ms blanking window),
-     * THEN swap the buffer pointer.  The bounce DMA is refilling SRAM during
-     * blanking, so it picks up the new source before the first active line. */
-    xSemaphoreTake(g_vsync_sem, 0);                    /* drain any stale signal */
-    xSemaphoreTake(g_vsync_sem, pdMS_TO_TICKS(100));   /* wait — blanking starts  */
-    esp_lcd_panel_draw_bitmap(g_panel, 0, 0, LCD_W, LCD_H, g_fbs[g_back]);
-    g_back ^= 1;
-    g_fb = (uint16_t *)g_fbs[g_back];
+    uint16_t x, y;
+    uint8_t cnt = 0;
+    esp_lcd_touch_read_data(g_touch);
+    bool touched = esp_lcd_touch_get_coordinates(g_touch, &x, &y, NULL, &cnt, 1);
+    data->point.x = x;
+    data->point.y = y;
+    data->state = touched ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
 }
 
-/* ---- Font rendering ---- */
-static void fb_draw_char(int x0, int y0, const uint8_t *glyph, uint16_t color)
+static void lvgl_tick_task(void *arg)
 {
-    for (int row = 0; row < 8; row++) {
-        uint8_t bits = glyph[row];
-        for (int col = 0; col < 8; col++) {
-            if (!(bits & (0x01u << col))) continue;
-            for (int dy = 0; dy < FONT_SCALE; dy++) {
-                int py = y0 + row * FONT_SCALE + dy;
-                if ((unsigned)py >= LCD_H) continue;
-                for (int dx = 0; dx < FONT_SCALE; dx++) {
-                    int px = x0 + col * FONT_SCALE + dx;
-                    if ((unsigned)px >= LCD_W) continue;
-                    g_fb[py * LCD_W + px] = color;
-                }
+    while (1) {
+        lv_tick_inc(10);
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+}
+
+/* ---- Camera feed ---- */
+static EXT_RAM_BSS_ATTR lv_color_t g_canvas_buf[CAM_W * CAM_H];
+static lv_obj_t  *g_canvas;
+static EXT_RAM_BSS_ATTR uint8_t g_frame[200 * 1024];  /* JPEG from cam, 200 KB max */
+static volatile uint32_t g_frame_len = 0;
+static volatile bool     g_new_frame = false;
+static volatile bool     g_decoding  = false;
+
+
+static void lvgl_handler_task(void *arg)
+{
+    while (1) {
+        lv_timer_handler();
+        if (g_new_frame) {
+            g_new_frame = false;
+            g_decoding = true;
+            esp_jpeg_image_cfg_t cfg = {
+                .indata      = g_frame,
+                .indata_size = g_frame_len,
+                .outbuf      = (uint8_t *)g_canvas_buf,
+                .outbuf_size = sizeof(g_canvas_buf),
+                .out_format  = JPEG_IMAGE_FORMAT_RGB565,
+                .out_scale   = JPEG_IMAGE_SCALE_0,
+            };
+            esp_jpeg_image_output_t out;
+            esp_err_t err = esp_jpeg_decode(&cfg, &out);
+            g_decoding = false;
+            if (err != ESP_OK) {
+                ESP_LOGE(TAG, "JPEG decode failed: %s", esp_err_to_name(err));
+            } else {
+                ESP_LOGD(TAG, "Decoded %"PRIu32"x%"PRIu32, out.width, out.height);
+                lv_obj_invalidate(g_canvas);
+                lv_timer_handler();
             }
         }
-    }
-}
-
-static void fb_draw_str(int x, int y, const char *s, uint16_t color)
-{
-    while (*s) {
-        fb_draw_char(x, y, font8x8_glyph(*s), color);
-        x += CHAR_W;
-        s++;
-    }
-}
-
-/* ---- Video area geometry ---- */
-#define FRAME_W     160
-#define FRAME_H     120
-#define VID_SCALE   4
-#define VID_DST_W   (FRAME_W * VID_SCALE)          /* 640 */
-#define VID_DST_H   (FRAME_H * VID_SCALE)          /* 480 */
-#define VID_X       ((LCD_W - VID_DST_W) / 2)      /* 192 */
-#define VID_Y       ((LCD_H - VID_DST_H) / 2)      /* 60  */
-#define FRAME_BYTES (FRAME_W * FRAME_H * 2)
-
-/*
- * Scale 160×120 → 640×480 into the current back buffer.
- * Uses a SRAM line buffer + memcpy rows for cache-friendly PSRAM writes.
- * OV2640 outputs RGB565 big-endian; we byte-swap each pixel.
- */
-static void blit_frame(const uint8_t *src)
-{
-    static uint16_t line[VID_DST_W];   /* 1 280 B — stays in cache */
-
-    for (int sy = 0; sy < FRAME_H; sy++) {
-        /* Build one expanded row in SRAM */
-        for (int sx = 0; sx < FRAME_W; sx++) {
-            const uint8_t *p = src + (sy * FRAME_W + sx) * 2;
-            uint16_t px = ((uint16_t)p[0] << 8) | p[1];   /* BE → LE swap */
-            line[sx * VID_SCALE + 0] = px;
-            line[sx * VID_SCALE + 1] = px;
-            line[sx * VID_SCALE + 2] = px;
-            line[sx * VID_SCALE + 3] = px;
-        }
-        /* Copy that row to VID_SCALE consecutive PSRAM rows */
-        for (int rep = 0; rep < VID_SCALE; rep++) {
-            uint16_t *dst = g_fb + (VID_Y + sy * VID_SCALE + rep) * LCD_W + VID_X;
-            memcpy(dst, line, VID_DST_W * sizeof(uint16_t));
-        }
-    }
-}
-
-/* Draw static header/footer chrome onto whichever buffer g_fb currently is */
-static void draw_chrome_to_current(void)
-{
-    memset(g_fb, 0, LCD_W * LCD_H * sizeof(uint16_t));
-    fb_draw_str(8, (VID_Y - CHAR_H) / 2, "SCOUT  Camera Feed", COL_CYAN);
-
-    const char *footer = "AP: Scout_AP  |  192.168.4.1";
-    int fw = (int)strlen(footer) * CHAR_W;
-    int fy = VID_Y + VID_DST_H + (LCD_H - VID_Y - VID_DST_H - CHAR_H) / 2;
-    fb_draw_str((LCD_W - fw) / 2, fy, footer, COL_GRAY);
-}
-
-static void draw_waiting_to_current(void)
-{
-    /* Clear only the video area */
-    for (int y = VID_Y; y < VID_Y + VID_DST_H; y++)
-        memset(g_fb + y * LCD_W + VID_X, 0, VID_DST_W * sizeof(uint16_t));
-
-    const char *msg = "Waiting for camera...";
-    int mw = (int)strlen(msg) * CHAR_W;
-    fb_draw_str(VID_X + (VID_DST_W - mw) / 2,
-                VID_Y + (VID_DST_H - CHAR_H) / 2, msg, COL_YELLOW);
-}
-
-/* ---- TCP helpers ---- */
-static esp_err_t recv_all(int sock, void *buf, size_t len)
-{
-    uint8_t *p = (uint8_t *)buf;
-    while (len > 0) {
-        int n = recv(sock, p, len, 0);
-        if (n <= 0) return ESP_FAIL;
-        p += n; len -= n;
-    }
-    return ESP_OK;
-}
-
-/* ---- Video server task ---- */
-static void video_server_task(void *arg)
-{
-    static uint8_t frame_buf[FRAME_BYTES];
-
-    int server = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    int opt = 1;
-    setsockopt(server, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-
-    struct sockaddr_in addr = {
-        .sin_family = AF_INET,
-        .sin_port = htons(VID_PORT),
-        .sin_addr.s_addr = htonl(INADDR_ANY),
-    };
-    bind(server, (struct sockaddr *)&addr, sizeof(addr));
-    listen(server, 1);
-
-    while (1) {
-        /* Show waiting message in both buffers so neither shows garbage */
-        draw_waiting_to_current();
-        present_frame();
-        draw_waiting_to_current();
-
-        struct sockaddr_in ca;
-        socklen_t clen = sizeof(ca);
-        int client = accept(server, (struct sockaddr *)&ca, &clen);
-        ESP_LOGI(MAIN_TAG, "Camera connected: %s", inet_ntoa(ca.sin_addr));
-
-        while (1) {
-            uint32_t len_net;
-            if (recv_all(client, &len_net, 4) != ESP_OK) break;
-            uint32_t flen = ntohl(len_net);
-            if (flen != FRAME_BYTES) { ESP_LOGW(MAIN_TAG, "Bad frame size"); break; }
-            if (recv_all(client, frame_buf, FRAME_BYTES) != ESP_OK) break;
-
-            blit_frame(frame_buf);
-            present_frame();          /* vsync-safe swap */
-        }
-
-        close(client);
-        ESP_LOGW(MAIN_TAG, "Camera disconnected");
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
 /* ---- WiFi AP ---- */
-static void wifi_init_ap(void)
+static void wifi_ap_start(void)
 {
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -236,41 +107,120 @@ static void wifi_init_ap(void)
 
     wifi_config_t ap_cfg = {
         .ap = {
-            .ssid = AP_SSID, .ssid_len = sizeof(AP_SSID) - 1,
-            .channel = 1, .password = AP_PASS,
-            .max_connection = AP_MAX_STA, .authmode = WIFI_AUTH_WPA2_PSK,
+            .ssid           = "Scout_AP",
+            .password       = "scout1234",
+            .max_connection = 1,
+            .authmode       = WIFI_AUTH_WPA2_PSK,
         },
     };
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_cfg));
     ESP_ERROR_CHECK(esp_wifi_start());
+    ESP_LOGI(TAG, "AP started: Scout_AP");
+}
+
+/* ---- TCP server ---- */
+static esp_err_t recv_all(int sock, void *buf, size_t len)
+{
+    uint8_t *p = buf;
+    while (len > 0) {
+        int n = recv(sock, p, len, 0);
+        if (n <= 0) return ESP_FAIL;
+        p += n;
+        len -= n;
+    }
+    return ESP_OK;
+}
+
+static void tcp_server_task(void *arg)
+{
+    struct sockaddr_in addr = {
+        .sin_family      = AF_INET,
+        .sin_port        = htons(VID_PORT),
+        .sin_addr.s_addr = INADDR_ANY,
+    };
+    int server = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    bind(server, (struct sockaddr *)&addr, sizeof(addr));
+    listen(server, 1);
+    ESP_LOGI(TAG, "TCP server ready on port %d", VID_PORT);
+
+    while (1) {
+        int client = accept(server, NULL, NULL);
+        if (client < 0) continue;
+        ESP_LOGI(TAG, "Camera connected");
+
+        while (1) {
+            uint32_t len_net;
+            if (recv_all(client, &len_net, 4) != ESP_OK) break;
+            uint32_t len = ntohl(len_net);
+            if (len > sizeof(g_frame)) break;
+            if (g_decoding) {
+                /* decoder busy — drain frame to keep socket in sync */
+                uint8_t sink[512];
+                uint32_t rem = len;
+                bool ok = true;
+                while (rem > 0) {
+                    uint32_t n = rem < sizeof(sink) ? rem : sizeof(sink);
+                    if (recv_all(client, sink, n) != ESP_OK) { ok = false; break; }
+                    rem -= n;
+                }
+                if (!ok) break;
+            } else {
+                if (recv_all(client, g_frame, len) != ESP_OK) break;
+                g_frame_len = len;
+                g_new_frame = true;
+            }
+        }
+
+        close(client);
+        ESP_LOGW(TAG, "Camera disconnected");
+    }
 }
 
 /* ---- Main ---- */
 void app_main(void)
 {
-    DEV_I2C_Init();
-    IO_EXTENSION_Init();
+    wifi_ap_start();
+
+    g_touch = touch_gt911_init();
     g_panel = waveshare_esp32_s3_rgb_lcd_init();
-
-    /* Get both DMA framebuffers */
-    waveshare_get_frame_buffer(&g_fbs[0], &g_fbs[1]);
-    g_back = 1;                           /* start writing to buf[1] */
-    g_fb   = (uint16_t *)g_fbs[g_back];
-
-    /* Register vsync callback */
-    g_vsync_sem = xSemaphoreCreateBinary();
-    esp_lcd_rgb_panel_event_callbacks_t cbs = { .on_vsync = vsync_cb };
-    esp_lcd_rgb_panel_register_event_callbacks(g_panel, &cbs, g_vsync_sem);
-
-    /* Prime both buffers with chrome so neither shows uninitialised PSRAM */
-    draw_chrome_to_current();
-    present_frame();
-    draw_chrome_to_current();
-
+    waveshare_get_frame_buffer(&g_fb[0], &g_fb[1]);
     wavesahre_rgb_lcd_bl_on();
-    wifi_init_ap();
 
-    xTaskCreate(video_server_task, "video_srv", 8192, NULL, 5, NULL);
+    lv_init();
+
+    static lv_disp_draw_buf_t draw_buf;
+    lv_disp_draw_buf_init(&draw_buf, g_fb[0], g_fb[1],
+                          EXAMPLE_LCD_H_RES * EXAMPLE_LCD_V_RES);
+
+    static lv_disp_drv_t disp_drv;
+    lv_disp_drv_init(&disp_drv);
+    disp_drv.hor_res     = EXAMPLE_LCD_H_RES;
+    disp_drv.ver_res     = EXAMPLE_LCD_V_RES;
+    disp_drv.flush_cb    = lvgl_flush_cb;
+    disp_drv.draw_buf    = &draw_buf;
+    disp_drv.full_refresh = 1;
+    lv_disp_drv_register(&disp_drv);
+
+    static lv_indev_drv_t indev_drv;
+    lv_indev_drv_init(&indev_drv);
+    indev_drv.type    = LV_INDEV_TYPE_POINTER;
+    indev_drv.read_cb = touch_read_cb;
+    lv_indev_drv_register(&indev_drv);
+
+    /* background */
+    lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(0x966FDE), 0);
+
+    /* camera canvas centered */
+    g_canvas = lv_canvas_create(lv_scr_act());
+    lv_canvas_set_buffer(g_canvas, g_canvas_buf, CAM_W, CAM_H, LV_IMG_CF_TRUE_COLOR);
+    lv_obj_align(g_canvas, LV_ALIGN_CENTER, 0, 0);
+    lv_canvas_fill_bg(g_canvas, lv_color_hex(0x111111), LV_OPA_COVER);
+
+    xTaskCreate(lvgl_tick_task,    "lvgl_tick",    2048, NULL, 5, NULL);
+    xTaskCreate(lvgl_handler_task, "lvgl_handler", 8192, NULL, 4, NULL);
+    xTaskCreate(tcp_server_task,   "tcp_server",   4096, NULL, 3, NULL);
+
+    ESP_LOGI(TAG, "Screen ready");
     vTaskDelete(NULL);
 }
