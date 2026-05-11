@@ -15,8 +15,8 @@
 
 static const char *TAG = "screen";
 
-#define CAM_W    640
-#define CAM_H    480
+#define CAM_W    480
+#define CAM_H    320
 #define VID_PORT 3334
 
 static esp_lcd_panel_handle_t g_panel;

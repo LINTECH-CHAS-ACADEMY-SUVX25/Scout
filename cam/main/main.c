@@ -112,10 +112,10 @@ static esp_err_t camera_init(void)
         .ledc_timer   = LEDC_TIMER_0,
         .ledc_channel = LEDC_CHANNEL_0,
         .pixel_format = PIXFORMAT_JPEG,
-        .frame_size   = FRAMESIZE_VGA,   /* 640x480 */
+        .frame_size   = FRAMESIZE_HVGA,   /* VGA 640x480 HVGA 480x320 */
         .jpeg_quality = 24,
-        .fb_count     = 1,
-        .fb_location  = CAMERA_FB_IN_DRAM,
+        .fb_count     = 2,
+        .fb_location  = CAMERA_FB_IN_PSRAM,
         .grab_mode    = CAMERA_GRAB_WHEN_EMPTY,
     };
     return esp_camera_init(&config);
