@@ -111,9 +111,9 @@ static esp_err_t camera_init(void)
         .xclk_freq_hz = 20000000,
         .ledc_timer   = LEDC_TIMER_0,
         .ledc_channel = LEDC_CHANNEL_0,
-        .pixel_format = PIXFORMAT_RGB565,
-        .frame_size   = FRAMESIZE_QQVGA,   /* 160×120 */
-        .jpeg_quality = 12,
+        .pixel_format = PIXFORMAT_JPEG,
+        .frame_size   = FRAMESIZE_VGA,   /* 640x480 */
+        .jpeg_quality = 24,
         .fb_count     = 1,
         .fb_location  = CAMERA_FB_IN_DRAM,
         .grab_mode    = CAMERA_GRAB_WHEN_EMPTY,
@@ -162,7 +162,7 @@ static void stream_task(void *arg)
                 break;
             }
 
-            /* 4-byte length header (network byte order), then raw RGB565 */
+            /* 4-byte length header (network byte order), then JPEG payload */
             uint32_t len_net = htonl((uint32_t)fb->len);
             esp_err_t err = send_all(sock, &len_net, 4);
             if (err == ESP_OK) err = send_all(sock, fb->buf, fb->len);

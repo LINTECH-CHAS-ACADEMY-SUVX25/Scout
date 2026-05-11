@@ -1,4 +1,5 @@
 #include <string.h>
+#include <inttypes.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
@@ -10,11 +11,12 @@
 #include "lvgl.h"
 #include "gt911.h"
 #include "rgb_lcd_port.h"
+#include "jpeg_decoder.h"
 
 static const char *TAG = "screen";
 
-#define CAM_W    160
-#define CAM_H    120
+#define CAM_W    640
+#define CAM_H    480
 #define VID_PORT 3334
 
 static esp_lcd_panel_handle_t g_panel;
@@ -49,10 +51,13 @@ static void lvgl_tick_task(void *arg)
 }
 
 /* ---- Camera feed ---- */
-static lv_color_t g_canvas_buf[CAM_W * CAM_H];
+static EXT_RAM_BSS_ATTR lv_color_t g_canvas_buf[CAM_W * CAM_H];
 static lv_obj_t  *g_canvas;
-static uint8_t    g_frame[CAM_W * CAM_H * 2];  /* raw RGB565 from cam */
-static volatile bool g_new_frame = false;
+static EXT_RAM_BSS_ATTR uint8_t g_frame[200 * 1024];  /* JPEG from cam, 200 KB max */
+static volatile uint32_t g_frame_len = 0;
+static volatile bool     g_new_frame = false;
+static volatile bool     g_decoding  = false;
+
 
 static void lvgl_handler_task(void *arg)
 {
@@ -60,13 +65,25 @@ static void lvgl_handler_task(void *arg)
         lv_timer_handler();
         if (g_new_frame) {
             g_new_frame = false;
-            uint16_t *src = (uint16_t *)g_frame;
-            uint16_t *dst = (uint16_t *)g_canvas_buf;
-            for (int i = 0; i < CAM_W * CAM_H; i++) {
-                uint16_t px = src[i];
-                dst[i] = (px >> 8) | (px << 8);
+            g_decoding = true;
+            esp_jpeg_image_cfg_t cfg = {
+                .indata      = g_frame,
+                .indata_size = g_frame_len,
+                .outbuf      = (uint8_t *)g_canvas_buf,
+                .outbuf_size = sizeof(g_canvas_buf),
+                .out_format  = JPEG_IMAGE_FORMAT_RGB565,
+                .out_scale   = JPEG_IMAGE_SCALE_0,
+            };
+            esp_jpeg_image_output_t out;
+            esp_err_t err = esp_jpeg_decode(&cfg, &out);
+            g_decoding = false;
+            if (err != ESP_OK) {
+                ESP_LOGE(TAG, "JPEG decode failed: %s", esp_err_to_name(err));
+            } else {
+                ESP_LOGD(TAG, "Decoded %"PRIu32"x%"PRIu32, out.width, out.height);
+                lv_obj_invalidate(g_canvas);
+                lv_timer_handler();
             }
-            lv_obj_invalidate(g_canvas);
         }
         vTaskDelay(pdMS_TO_TICKS(10));
     }
@@ -137,8 +154,22 @@ static void tcp_server_task(void *arg)
             if (recv_all(client, &len_net, 4) != ESP_OK) break;
             uint32_t len = ntohl(len_net);
             if (len > sizeof(g_frame)) break;
-            if (recv_all(client, g_frame, len) != ESP_OK) break;
-            g_new_frame = true;
+            if (g_decoding) {
+                /* decoder busy — drain frame to keep socket in sync */
+                uint8_t sink[512];
+                uint32_t rem = len;
+                bool ok = true;
+                while (rem > 0) {
+                    uint32_t n = rem < sizeof(sink) ? rem : sizeof(sink);
+                    if (recv_all(client, sink, n) != ESP_OK) { ok = false; break; }
+                    rem -= n;
+                }
+                if (!ok) break;
+            } else {
+                if (recv_all(client, g_frame, len) != ESP_OK) break;
+                g_frame_len = len;
+                g_new_frame = true;
+            }
         }
 
         close(client);
@@ -180,16 +211,14 @@ void app_main(void)
     /* background */
     lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(0x966FDE), 0);
 
-    /* camera canvas centered, scaled 4x */
+    /* camera canvas centered */
     g_canvas = lv_canvas_create(lv_scr_act());
     lv_canvas_set_buffer(g_canvas, g_canvas_buf, CAM_W, CAM_H, LV_IMG_CF_TRUE_COLOR);
     lv_obj_align(g_canvas, LV_ALIGN_CENTER, 0, 0);
     lv_canvas_fill_bg(g_canvas, lv_color_hex(0x111111), LV_OPA_COVER);
-    lv_img_set_pivot(g_canvas, CAM_W / 2, CAM_H / 2);
-    lv_img_set_zoom(g_canvas, 640);  /* 160 = 1x, 640 = 4x */
 
     xTaskCreate(lvgl_tick_task,    "lvgl_tick",    2048, NULL, 5, NULL);
-    xTaskCreate(lvgl_handler_task, "lvgl_handler", 4096, NULL, 4, NULL);
+    xTaskCreate(lvgl_handler_task, "lvgl_handler", 8192, NULL, 4, NULL);
     xTaskCreate(tcp_server_task,   "tcp_server",   4096, NULL, 3, NULL);
 
     ESP_LOGI(TAG, "Screen ready");
