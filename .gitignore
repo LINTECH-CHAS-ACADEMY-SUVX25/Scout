@@ -5,10 +5,13 @@ sdkconfig.old
 
 # Dependencies fetched by idf_component_manager
 managed_components/
-dependencies.lock
 
 # Scout simulator build output
 scout-sim/build/
+
+# AI tooling
+CLAUDE.md
+.claude/
 
 # IDE / editor
 .vscode/
