@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  IDF_VERSION: v6.1.0
+
 jobs:
   build-cam:
     name: firmware/cam (esp32)
@@ -13,11 +16,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: espressif/esp-idf-ci-action@v1
+      - name: Cache ESP-IDF
+        uses: actions/cache@v4
+        id: cache-idf
         with:
-          esp_idf_version: v5.4.1
-          target: esp32
-          path: firmware/cam
+          path: |
+            ~/.espressif
+            ~/esp-idf
+          key: idf-${{ env.IDF_VERSION }}-esp32
+
+      - name: Install ESP-IDF
+        if: steps.cache-idf.outputs.cache-hit != 'true'
+        run: |
+          git clone --branch $IDF_VERSION --depth 1 --recursive https://github.com/espressif/esp-idf.git ~/esp-idf
+          ~/esp-idf/install.sh esp32
+
+      - name: Build
+        run: |
+          . ~/esp-idf/export.sh
+          cd firmware/cam
+          idf.py build
 
   build-screen:
     name: firmware/screen (esp32s3)
@@ -25,8 +43,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: espressif/esp-idf-ci-action@v1
+      - name: Cache ESP-IDF
+        uses: actions/cache@v4
+        id: cache-idf
         with:
-          esp_idf_version: v5.4.1
-          target: esp32s3
-          path: firmware/screen
+          path: |
+            ~/.espressif
+            ~/esp-idf
+          key: idf-${{ env.IDF_VERSION }}-esp32s3
+
+      - name: Install ESP-IDF
+        if: steps.cache-idf.outputs.cache-hit != 'true'
+        run: |
+          git clone --branch $IDF_VERSION --depth 1 --recursive https://github.com/espressif/esp-idf.git ~/esp-idf
+          ~/esp-idf/install.sh esp32s3
+
+      - name: Build
+        run: |
+          . ~/esp-idf/export.sh
+          cd firmware/screen
+          idf.py build
