@@ -6,17 +6,18 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "lwip/sockets.h"
 #include "lvgl.h"
 #include "jpeg_decoder.h"
 
 static const char *TAG = "video";
 
-#define CAM_W 480
-#define CAM_H 320
+#define CAM_W 240
+#define CAM_H 176
 
-static EXT_RAM_BSS_ATTR lv_color_t s_canvas_buf[CAM_W * CAM_H];
-static EXT_RAM_BSS_ATTR uint8_t    s_frame[200 * 1024];
+static lv_color_t s_canvas_buf[CAM_W * CAM_H];
+static uint8_t    s_frame[32 * 1024];
 static uint32_t          s_frame_len  = 0;
 static bool              s_new_frame  = false;
 static SemaphoreHandle_t s_frame_mutex;
@@ -35,8 +36,22 @@ static esp_err_t recv_all(int sock, void *buf, size_t len)
     return ESP_OK;
 }
 
+static const char *cmd_str(uint8_t c)
+{
+    if (c == CMD_STOP) return "STOP";
+    static char buf[32];
+    int pos = 0;
+    if (c & CMD_FORWARD)  pos += sprintf(buf + pos, "FWD ");
+    if (c & CMD_BACKWARD) pos += sprintf(buf + pos, "BWD ");
+    if (c & CMD_LEFT)     pos += sprintf(buf + pos, "LEFT ");
+    if (c & CMD_RIGHT)    pos += sprintf(buf + pos, "RIGHT ");
+    if (pos > 0) buf[pos - 1] = '\0';
+    return buf;
+}
+
 static void handler_task(void *arg)
 {
+    uint8_t last_cmd = 0xFF;
     while (1) {
         lv_timer_handler();
 
@@ -45,6 +60,10 @@ static void handler_task(void *arg)
             xSemaphoreGive(s_sock_mutex);
             if (sock >= 0) {
                 uint8_t c = ui_get_cmd();
+                if (c != last_cmd) {
+                    ESP_LOGI(TAG, "[handler] RC cmd: %s (0x%02x)", cmd_str(c), c);
+                    last_cmd = c;
+                }
                 send(sock, &c, 1, MSG_DONTWAIT);
             }
         }
@@ -53,6 +72,7 @@ static void handler_task(void *arg)
             if (s_new_frame) {
                 s_new_frame = false;
                 uint32_t len = s_frame_len;
+                int64_t t_decode = esp_timer_get_time();
                 esp_jpeg_image_cfg_t cfg = {
                     .indata      = s_frame,
                     .indata_size = len,
@@ -63,11 +83,12 @@ static void handler_task(void *arg)
                 };
                 esp_jpeg_image_output_t out;
                 esp_err_t err = esp_jpeg_decode(&cfg, &out);
+                int64_t decode_ms = (esp_timer_get_time() - t_decode) / 1000;
                 xSemaphoreGive(s_frame_mutex);
                 if (err != ESP_OK) {
-                    ESP_LOGE(TAG, "JPEG decode failed: %s", esp_err_to_name(err));
+                    ESP_LOGE(TAG, "[handler] JPEG decode failed: %s", esp_err_to_name(err));
                 } else {
-                    ESP_LOGD(TAG, "Decoded %"PRIu32"x%"PRIu32, (uint32_t)out.width, (uint32_t)out.height);
+                    ESP_LOGI(TAG, "[handler] Decoded %"PRIu32"x%"PRIu32" in %"PRId64"ms (%"PRIu32" bytes)", (uint32_t)out.width, (uint32_t)out.height, decode_ms, len);
                     lv_obj_invalidate((lv_obj_t *)arg);
                     lv_timer_handler();
                 }
@@ -90,38 +111,42 @@ static void tcp_server_task(void *arg)
 
     int server = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (server < 0) {
-        ESP_LOGE(TAG, "socket() failed");
+        ESP_LOGE(TAG, "[tcp] socket() failed");
         vTaskDelete(NULL);
         return;
     }
     if (bind(server, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
-        ESP_LOGE(TAG, "bind() failed");
+        ESP_LOGE(TAG, "[tcp] bind() failed");
         close(server);
         vTaskDelete(NULL);
         return;
     }
     if (listen(server, 1) != 0) {
-        ESP_LOGE(TAG, "listen() failed");
+        ESP_LOGE(TAG, "[tcp] listen() failed");
         close(server);
         vTaskDelete(NULL);
         return;
     }
-    ESP_LOGI(TAG, "TCP server ready on port %d", VID_PORT);
+    ESP_LOGI(TAG, "[tcp] Server ready on port %d", VID_PORT);
 
     while (1) {
+        ESP_LOGI(TAG, "[tcp] Waiting for camera to connect...");
         int client = accept(server, NULL, NULL);
         if (client < 0) continue;
 
         xSemaphoreTake(s_sock_mutex, portMAX_DELAY);
         s_client_sock = client;
         xSemaphoreGive(s_sock_mutex);
-        ESP_LOGI(TAG, "Camera connected");
+        ESP_LOGI(TAG, "[tcp] Camera connected");
+
+        uint32_t frames_received = 0;
+        uint32_t frames_dropped  = 0;
 
         while (1) {
             uint8_t magic;
             if (recv_all(client, &magic, 1) != ESP_OK) break;
             if (magic != FRAME_MAGIC) {
-                ESP_LOGE(TAG, "Bad frame magic: 0x%02x", magic);
+                ESP_LOGE(TAG, "[tcp] Bad frame magic: 0x%02x", magic);
                 break;
             }
 
@@ -138,6 +163,8 @@ static void tcp_server_task(void *arg)
                 s_frame_len = len;
                 s_new_frame = true;
                 xSemaphoreGive(s_frame_mutex);
+                frames_received++;
+                ESP_LOGD(TAG, "[tcp] Frame #%"PRIu32" queued (%"PRIu32" bytes)", frames_received, len);
             } else {
                 // decoder busy — drain to stay in sync
                 uint8_t sink[512];
@@ -148,6 +175,8 @@ static void tcp_server_task(void *arg)
                     if (recv_all(client, sink, n) != ESP_OK) { ok = false; break; }
                     rem -= n;
                 }
+                frames_dropped++;
+                ESP_LOGW(TAG, "[tcp] Frame dropped (decoder busy) — total dropped: %"PRIu32"/%"PRIu32, frames_dropped, frames_received + frames_dropped);
                 if (!ok) break;
             }
         }
@@ -156,7 +185,7 @@ static void tcp_server_task(void *arg)
         s_client_sock = -1;
         xSemaphoreGive(s_sock_mutex);
         close(client);
-        ESP_LOGW(TAG, "Camera disconnected");
+        ESP_LOGW(TAG, "[tcp] Camera disconnected — %"PRIu32" received, %"PRIu32" dropped", frames_received, frames_dropped);
     }
 }
 

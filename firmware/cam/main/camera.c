@@ -38,7 +38,7 @@ esp_err_t camera_init(void)
         .ledc_timer   = LEDC_TIMER_0,
         .ledc_channel = LEDC_CHANNEL_0,
         .pixel_format = PIXFORMAT_JPEG,
-        .frame_size   = FRAMESIZE_HVGA,   // 480x320; use FRAMESIZE_VGA for 640x480
+        .frame_size   = FRAMESIZE_HQVGA,  // 240x160
         .jpeg_quality = 20,               // lower = smaller payload, higher = better quality
         .fb_count     = 2,                // capture into one buffer while sending the other
         .fb_location  = CAMERA_FB_IN_PSRAM,

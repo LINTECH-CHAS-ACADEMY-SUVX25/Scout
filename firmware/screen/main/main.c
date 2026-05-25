@@ -11,10 +11,13 @@ static const char *TAG = "screen";
 void app_main(void)
 {
     wifi_ap_start();
+    ESP_LOGI(TAG, "WiFi AP started");
     display_init();
+    ESP_LOGI(TAG, "Display initialized");
     ui_init();
+    ESP_LOGI(TAG, "UI initialized");
     video_init();
+    ESP_LOGI(TAG, "Video tasks started");
 
-    ESP_LOGI(TAG, "Screen ready");
     vTaskDelete(NULL);
 }
