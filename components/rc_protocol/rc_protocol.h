@@ -3,6 +3,7 @@
 #define AP_SSID      "Scout_AP"
 #define AP_PASS      "scout1234"
 
+#define S3_IP        "192.168.4.1"
 #define VID_PORT     3334
 #define FRAME_MAGIC  0xAB
 
