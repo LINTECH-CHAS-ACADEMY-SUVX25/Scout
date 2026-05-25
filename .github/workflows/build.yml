@@ -15,7 +15,7 @@ jobs:
 
       - uses: espressif/esp-idf-ci-action@v1
         with:
-          esp_idf_version: v5.2.3
+          esp_idf_version: v5.4.1
           target: esp32
           path: firmware/cam
 
@@ -27,6 +27,6 @@ jobs:
 
       - uses: espressif/esp-idf-ci-action@v1
         with:
-          esp_idf_version: v5.2.3
+          esp_idf_version: v5.4.1
           target: esp32s3
           path: firmware/screen
