@@ -37,19 +37,15 @@ static esp_err_t recv_all(int sock, void *buf, size_t len)
 
 static void handler_task(void *arg)
 {
-    int cmd_tick = 0;
     while (1) {
         lv_timer_handler();
 
-        if (++cmd_tick >= 5) {
-            cmd_tick = 0;
-            if (xSemaphoreTake(s_sock_mutex, 0) == pdTRUE) {
-                int sock = s_client_sock;
-                xSemaphoreGive(s_sock_mutex);
-                if (sock >= 0) {
-                    uint8_t c = ui_get_cmd();
-                    send(sock, &c, 1, MSG_DONTWAIT);
-                }
+        if (xSemaphoreTake(s_sock_mutex, 0) == pdTRUE) {
+            int sock = s_client_sock;
+            xSemaphoreGive(s_sock_mutex);
+            if (sock >= 0) {
+                uint8_t c = ui_get_cmd();
+                send(sock, &c, 1, MSG_DONTWAIT);
             }
         }
 
