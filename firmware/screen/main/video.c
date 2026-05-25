@@ -67,7 +67,7 @@ static void handler_task(void *arg)
                 if (err != ESP_OK) {
                     ESP_LOGE(TAG, "JPEG decode failed: %s", esp_err_to_name(err));
                 } else {
-                    ESP_LOGD(TAG, "Decoded %"PRIu32"x%"PRIu32, (uint32_t)out.width, (uint32_t)out.height);
+                    ESP_LOGD(TAG, "Decoded %"PRIu32"x%"PRIu32, out.width, out.height);
                     lv_obj_invalidate((lv_obj_t *)arg);
                     lv_timer_handler();
                 }
