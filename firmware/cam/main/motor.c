@@ -2,7 +2,6 @@
 #include "rc_protocol.h"
 #include "driver/gpio.h"
 
-// L298N motor driver pins
 #define PIN_IN1  GPIO_NUM_12
 #define PIN_IN2  GPIO_NUM_13
 #define PIN_IN3  GPIO_NUM_14
@@ -10,14 +9,25 @@
 
 void motor_apply(uint8_t cmd)
 {
+    bool fwd = cmd & CMD_FORWARD;
+    bool bwd = cmd & CMD_BACKWARD;
+    bool lft = cmd & CMD_LEFT;
+    bool rgt = cmd & CMD_RIGHT;
+
+    if (fwd && bwd) { fwd = false; bwd = false; }
+    if (lft && rgt) { lft = false; rgt = false; }
+
     int in1, in2, in3, in4;
-    switch (cmd) {
-        case CMD_FORWARD:  in1=1; in2=0; in3=1; in4=0; break;
-        case CMD_BACKWARD: in1=0; in2=1; in3=0; in4=1; break;
-        case CMD_LEFT:     in1=1; in2=0; in3=0; in4=1; break;
-        case CMD_RIGHT:    in1=0; in2=1; in3=1; in4=0; break;
-        default:           in1=0; in2=0; in3=0; in4=0; break;
-    }
+    if (fwd && lft)       { in1 = 1; in2 = 0; in3 = 0; in4 = 0; }
+    else if (fwd && rgt)  { in1 = 0; in2 = 0; in3 = 1; in4 = 0; }
+    else if (bwd && lft)  { in1 = 0; in2 = 1; in3 = 0; in4 = 0; }
+    else if (bwd && rgt)  { in1 = 0; in2 = 0; in3 = 0; in4 = 1; }
+    else if (fwd)         { in1 = 1; in2 = 0; in3 = 1; in4 = 0; }
+    else if (bwd)         { in1 = 0; in2 = 1; in3 = 0; in4 = 1; }
+    else if (lft)         { in1 = 1; in2 = 0; in3 = 0; in4 = 1; }
+    else if (rgt)         { in1 = 0; in2 = 1; in3 = 1; in4 = 0; }
+    else                  { in1 = 0; in2 = 0; in3 = 0; in4 = 0; }
+
     gpio_set_level(PIN_IN1, in1);
     gpio_set_level(PIN_IN2, in2);
     gpio_set_level(PIN_IN3, in3);
@@ -35,5 +45,5 @@ void motor_init(void)
         .intr_type    = GPIO_INTR_DISABLE,
     };
     gpio_config(&cfg);
-    motor_apply(CMD_STOP); // start with motors stopped
+    motor_apply(CMD_STOP);
 }
