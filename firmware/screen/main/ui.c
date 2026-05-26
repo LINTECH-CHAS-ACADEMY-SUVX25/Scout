@@ -7,6 +7,9 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
+#define XSTR(x) STR(x)
+#define STR(x)  #x
+
 // ─── State ────────────────────────────────────────────────────────────────────
 
 static uint8_t   s_cmd       = CMD_STOP;
@@ -305,8 +308,8 @@ void ui_init(void)
     lv_obj_set_style_border_side(botbar, LV_BORDER_SIDE_TOP, 0);
     lv_obj_set_style_border_color(botbar, lv_color_hex(0x1C1F24), 0);
 
-    const char *bot_keys[] = { "IP", "UDP" };
-    const char *bot_vals[] = { "192.168.1.42", "4210" };
+    const char *bot_keys[] = { "IP", "TCP" };
+    const char *bot_vals[] = { S3_IP, XSTR(VID_PORT) };
     const int32_t key_w[]  = { 24, 38 };
     int32_t     bot_x      = 14;
     for (int i = 0; i < 2; i++) {
