@@ -3,6 +3,8 @@
 #include "camera.h"
 #include "motor_task.h"
 #include "network_task.h"
+#include "monitor.h"
+#include "telemetry.h"
 #include "esp_log.h"
 #include "esp_err.h"
 
@@ -18,6 +20,8 @@ void app_main(void)
     ESP_ERROR_CHECK(camera_init());
     ESP_LOGI(TAG, "Camera ready");
 
+    monitor_start();
+    telemetry_start();
     motor_task_start();
     network_task_start();
 }
