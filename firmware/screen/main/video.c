@@ -53,6 +53,7 @@ static void handler_task(void *arg)
 {
     uint8_t last_cmd = 0xFF;
     while (1) {
+        ui_tick();
         lv_timer_handler();
 
         if (xSemaphoreTake(s_sock_mutex, 0) == pdTRUE) {
@@ -89,8 +90,10 @@ static void handler_task(void *arg)
                     ESP_LOGE(TAG, "[handler] JPEG decode failed: %s", esp_err_to_name(err));
                 } else {
                     ESP_LOGI(TAG, "[handler] Decoded %"PRIu32"x%"PRIu32" in %"PRId64"ms (%"PRIu32" bytes)", (uint32_t)out.width, (uint32_t)out.height, decode_ms, len);
+                    // Just mark the canvas dirty; the lv_timer_handler() at the
+                    // top of the loop redraws it next iteration. Calling it again
+                    // here forced a second full-screen refresh per frame.
                     lv_obj_invalidate((lv_obj_t *)arg);
-                    lv_timer_handler();
                 }
             } else {
                 xSemaphoreGive(s_frame_mutex);
@@ -138,9 +141,12 @@ static void tcp_server_task(void *arg)
         s_client_sock = client;
         xSemaphoreGive(s_sock_mutex);
         ESP_LOGI(TAG, "[tcp] Camera connected");
+        ui_set_connected(true);
 
         uint32_t frames_received = 0;
         uint32_t frames_dropped  = 0;
+        uint32_t fps_count       = 0;
+        int64_t  fps_window      = esp_timer_get_time();
 
         while (1) {
             uint8_t magic;
@@ -164,6 +170,12 @@ static void tcp_server_task(void *arg)
                 s_new_frame = true;
                 xSemaphoreGive(s_frame_mutex);
                 frames_received++;
+                fps_count++;
+                if (esp_timer_get_time() - fps_window >= 1000000) {
+                    ui_set_fps(fps_count);
+                    fps_count  = 0;
+                    fps_window = esp_timer_get_time();
+                }
                 ESP_LOGD(TAG, "[tcp] Frame #%"PRIu32" queued (%"PRIu32" bytes)", frames_received, len);
             } else {
                 // decoder busy — drain to stay in sync
@@ -185,6 +197,8 @@ static void tcp_server_task(void *arg)
         s_client_sock = -1;
         xSemaphoreGive(s_sock_mutex);
         close(client);
+        ui_set_connected(false);
+        ui_set_fps(0);
         ESP_LOGW(TAG, "[tcp] Camera disconnected — %"PRIu32" received, %"PRIu32" dropped", frames_received, frames_dropped);
     }
 }
