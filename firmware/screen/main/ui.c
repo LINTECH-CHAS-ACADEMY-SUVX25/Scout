@@ -308,7 +308,8 @@ void ui_init(void)
     lv_obj_set_style_border_side(botbar, LV_BORDER_SIDE_TOP, 0);
     lv_obj_set_style_border_color(botbar, lv_color_hex(0x1C1F24), 0);
 
-    const char *bot_keys[] = { "IP", "TCP" };
+    // Visa protokoll och IP i statusraden — uppdateras inte under körning
+    const char *bot_keys[] = { "IP", "UDP" };
     const char *bot_vals[] = { S3_IP, XSTR(VID_PORT) };
     const int32_t key_w[]  = { 24, 38 };
     int32_t     bot_x      = 14;

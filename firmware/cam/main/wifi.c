@@ -27,11 +27,13 @@ static void on_wifi_event(void *arg, esp_event_base_t base, int32_t id, void *da
     }
 }
 
-// blocks until we have an IP — nothing can stream before this returns
+// Anslut kameran som WiFi Station till screenens AP.
+// Blockerar tills vi har en IP — ingenting ska strömma innan dess.
 void wifi_connect(void)
 {
     s_wifi_events = xEventGroupCreate();
 
+    // NVS måste initieras innan WiFi-drivrutinen kan starta
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
@@ -55,6 +57,9 @@ void wifi_connect(void)
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg));
     ESP_ERROR_CHECK(esp_wifi_start());
+    // Stäng av WiFi power save — annars kan radion sova 50–100 ms mellan paket
+    // vilket märks tydligt som hackig video och fördröjda styrkommandon
+    esp_wifi_set_ps(WIFI_PS_NONE);
 
     ESP_LOGI(TAG, "Connecting to %s...", AP_SSID);
     xEventGroupWaitBits(s_wifi_events, CONNECTED_BIT, pdFALSE, pdTRUE, portMAX_DELAY);

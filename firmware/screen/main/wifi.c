@@ -8,8 +8,11 @@
 
 static const char *TAG = "wifi";
 
+// Starta WiFi som Access Point — screenen äger nätverket, kameran ansluter till oss.
+// Det ger oss en fast IP (192.168.4.1) som kameran alltid skickar video till.
 void wifi_ap_start(void)
 {
+    // NVS behöver initieras innan WiFi-drivrutinen startar
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
@@ -23,8 +26,12 @@ void wifi_ap_start(void)
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
-    wifi_config_t ap_cfg = {
-        .ap = {
+    // AP-konfiguration: SSID och lösenord hämtas från rc_protocol.h
+    // max_connection=1 eftersom vi bara vill ha kameran inkopplad
+    wifi_config_t ap_cfg = 
+    {
+        .ap = 
+        {
             .ssid           = AP_SSID,
             .password       = AP_PASS,
             .max_connection = 1,
@@ -34,5 +41,8 @@ void wifi_ap_start(void)
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_cfg));
     ESP_ERROR_CHECK(esp_wifi_start());
+    // Stäng av WiFi power save — annars kan ESP32 sova i 50–100 ms (DTIM-intervall)
+    // mellan mottagna paket, vilket ger kraftig latens i videoströmmen
+    esp_wifi_set_ps(WIFI_PS_NONE);
     ESP_LOGI(TAG, "AP started: %s", AP_SSID);
 }

@@ -19,9 +19,12 @@
 #define CAM_PIN_HREF    23
 #define CAM_PIN_PCLK    22
 
+// Initierar OV2640-kameran på AI-Thinker ESP32-CAM.
+// Inställningarna är optimerade för högsta möjliga FPS med acceptabel bildkvalitet.
 esp_err_t camera_init(void)
 {
-    camera_config_t config = {
+    camera_config_t config = 
+    {
         .pin_pwdn     = CAM_PIN_PWDN,
         .pin_reset    = CAM_PIN_RESET,
         .pin_xclk     = CAM_PIN_XCLK,
@@ -38,11 +41,17 @@ esp_err_t camera_init(void)
         .ledc_timer   = LEDC_TIMER_0,
         .ledc_channel = LEDC_CHANNEL_0,
         .pixel_format = PIXFORMAT_JPEG,
-        .frame_size   = FRAMESIZE_HQVGA,  // 240x160
-        .jpeg_quality = 20,               // lower = smaller payload, higher = better quality
-        .fb_count     = 2,                // capture into one buffer while sending the other
+        // HQVGA (240x176) — originalinställning, mindre JPEG = högre FPS.
+        .frame_size   = FRAMESIZE_HQVGA,
+        // Kvalitet 20 — originalinställning.
+        // Skala 0–63 där lägre tal ger bättre kvalitet men större paket.
+        .jpeg_quality = 20,
+        // Två bildbuffertar: kameran fyller en medan vi skickar den andra
+        .fb_count     = 2,
         .fb_location  = CAMERA_FB_IN_PSRAM,
-        .grab_mode    = CAMERA_GRAB_LATEST, // always get the newest frame, skip older ones
+        // Alltid ta den senaste bilden — hoppa över gamla bilder i kön
+        // för att hålla latensen nere
+        .grab_mode    = CAMERA_GRAB_LATEST,
     };
     return esp_camera_init(&config);
 }
