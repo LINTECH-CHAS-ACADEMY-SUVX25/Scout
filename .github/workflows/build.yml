@@ -10,6 +10,25 @@ env:
   IDF_VERSION: v6.0.1
 
 jobs:
+  lint:
+    name: cppcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cppcheck
+        run: sudo apt-get install -y cppcheck
+
+      - name: Run cppcheck
+        run: |
+          cppcheck \
+            --enable=warning,performance,portability \
+            --error-exitcode=1 \
+            --suppress=missingIncludeSystem \
+            --inline-suppr \
+            firmware/cam/main \
+            firmware/screen/main
+
   build-cam:
     name: firmware/cam (esp32)
     runs-on: ubuntu-latest
