@@ -5,6 +5,7 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_camera.h"
+#include "esp_task_wdt.h"
 #include "lwip/sockets.h"
 #include "lwip/inet.h"
 
@@ -38,8 +39,10 @@ static void network_task(void *arg)
 
     net_state_t state = STATE_DISCONNECTED;
     int sock = -1;
+    esp_task_wdt_add(NULL);
 
     while (1) {
+        esp_task_wdt_reset();
         switch (state) {
 
             case STATE_DISCONNECTED:
