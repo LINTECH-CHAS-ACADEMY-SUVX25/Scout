@@ -5,6 +5,7 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_camera.h"
+#include "esp_task_wdt.h"
 #include "lwip/sockets.h"
 #include "lwip/inet.h"
 
@@ -36,10 +37,14 @@ static void network_task(void *arg)
     };
     inet_pton(AF_INET, S3_IP, &dest.sin_addr);
 
+    esp_task_wdt_add(NULL);
+
     net_state_t state = STATE_DISCONNECTED;
     int sock = -1;
 
     while (1) {
+        esp_task_wdt_reset();
+
         switch (state) {
 
             case STATE_DISCONNECTED:
@@ -54,6 +59,7 @@ static void network_task(void *arg)
 
             case STATE_CONNECTING:
                 ESP_LOGI(TAG, "Connecting to S3...");
+                esp_task_wdt_reset();
                 if (connect(sock, (struct sockaddr *)&dest, sizeof(dest)) != 0) {
                     ESP_LOGW(TAG, "Connect failed, retrying in 2s");
                     close(sock);

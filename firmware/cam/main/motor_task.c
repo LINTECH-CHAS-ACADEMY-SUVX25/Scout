@@ -5,6 +5,7 @@
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "esp_log.h"
+#include "esp_task_wdt.h"
 
 static const char *TAG = "motor";
 
@@ -17,16 +18,20 @@ void motor_cmd_send(uint8_t cmd)
 
 static void motor_task(void *arg)
 {
-    uint8_t cmd;
-    bool moving = false; 
+    esp_task_wdt_add(NULL);
 
-    while (1) 
+    uint8_t cmd;
+    bool moving = false;
+
+    while (1)
     {
-        if (xQueueReceive(s_queue, &cmd, pdMS_TO_TICKS(500)) == pdTRUE) 
+        esp_task_wdt_reset();
+
+        if (xQueueReceive(s_queue, &cmd, pdMS_TO_TICKS(500)) == pdTRUE)
         {
-            motor_apply(cmd); 
-            moving = (cmd != CMD_STOP); 
-        } else if (moving) 
+            motor_apply(cmd);
+            moving = (cmd != CMD_STOP);
+        } else if (moving)
         {
             motor_apply(CMD_STOP);
             moving = false;
