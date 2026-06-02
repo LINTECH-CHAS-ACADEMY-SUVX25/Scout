@@ -3,7 +3,7 @@ project(scout_hal_tests CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 
-set(HAL_DIR ${CMAKE_SOURCE_DIR}/../components/hal)
+set(HAL_DIR ${CMAKE_SOURCE_DIR}/../components/scout_hal)
 
 add_executable(scout_hal_tests
     main.cpp
