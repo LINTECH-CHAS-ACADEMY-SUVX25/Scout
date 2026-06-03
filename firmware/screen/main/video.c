@@ -54,7 +54,10 @@ static void handler_task(void *arg)
     uint8_t last_cmd = 0xFF;
     while (1) {
         ui_tick();
+        int64_t t_render = esp_timer_get_time();
         lv_timer_handler();
+        int64_t render_ms = (esp_timer_get_time() - t_render) / 1000;
+        ESP_LOGI(TAG, "[lvgl] Rendered Frame in %"PRId64"ms", render_ms);
 
         if (xSemaphoreTake(s_sock_mutex, 0) == pdTRUE) {
             int sock = s_client_sock;
