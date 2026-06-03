@@ -77,7 +77,7 @@ static void *s_canvas;
 
 void ui_render_frame(void)
 {
-    lvgl_port_render_frame();
+    lvgl_port_render_frame(); // wrapper function to abstract lvgl from ui.c
 }
 
 void ui_canvas_init(uint8_t *buf, int w, int h)
