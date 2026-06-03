@@ -7,7 +7,7 @@
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-static uint8_t          s_cmd       = CMD_STOP;
+static uint8_t           s_cmd       = CMD_STOP;
 static volatile bool     s_connected = false;
 static volatile uint32_t s_fps_val   = 0;
 static volatile bool     s_ui_dirty  = false;
@@ -77,4 +77,23 @@ void ui_tick(void)
 void ui_init(void)
 {
     lvgl_port_init();
+}
+
+// ── Render / canvas (wraps lvgl_port so render.c stays lvgl-free) ─────────────
+
+static void *s_canvas;
+
+void ui_render_frame(void)
+{
+    lvgl_port_render_frame();
+}
+
+void ui_canvas_init(uint8_t *buf, int w, int h)
+{
+    s_canvas = lvgl_port_create_video_canvas(buf, w, h);
+}
+
+void ui_canvas_invalidate(void)
+{
+    lvgl_port_canvas_invalidate(s_canvas);
 }

@@ -1,6 +1,5 @@
 #include "render.h"
 #include "stream.h"
-#include "lvgl_port.h"
 #include "ui.h"
 #include "rc_protocol.h"
 #include <inttypes.h>
@@ -16,7 +15,6 @@ static const char *TAG = "render";
 #define CAM_H 176
 
 static uint16_t s_canvas_buf[CAM_W * CAM_H];
-static void    *s_canvas;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -36,7 +34,7 @@ static const char *cmd_str(uint8_t c)
 static void run_render_frame(void)
 {
     int64_t render_t = esp_timer_get_time();
-    lvgl_port_render_frame();
+    ui_render_frame();
     int64_t render_ms = (esp_timer_get_time() - render_t) / 1000;
     if (render_ms > 5)
         ESP_LOGI(TAG, "[lvgl] frame in %"PRId64"ms", render_ms);
@@ -57,7 +55,7 @@ static void send_rc_command(uint8_t *last_cmd)
 static void try_decode_frame(void)
 {
     if (stream_try_decode((uint8_t *)s_canvas_buf, sizeof(s_canvas_buf)))
-        lvgl_port_canvas_invalidate(s_canvas);
+        ui_canvas_invalidate();
 }
 
 // ── Render task ───────────────────────────────────────────────────────────────
@@ -66,12 +64,20 @@ static void render_task(void *arg)
 {
     (void)arg;
     uint8_t last_cmd = 0xFF;
+    //int64_t last_log_ms = 0;
 
     while (1) {
         ui_tick();
         run_render_frame();
         send_rc_command(&last_cmd);
         try_decode_frame();
+        /*
+        int64_t now_ms = esp_timer_get_time() / 1000;
+        if (now_ms - last_log_ms >= 1000) {
+            ESP_LOGI(TAG, "[render] Runtime: %"PRId64"ms", now_ms);
+            last_log_ms = now_ms;
+        }
+        */
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
@@ -80,6 +86,6 @@ static void render_task(void *arg)
 
 void render_init(void)
 {
-    s_canvas = lvgl_port_create_video_canvas((uint8_t *)s_canvas_buf, CAM_W, CAM_H);
+    ui_canvas_init((uint8_t *)s_canvas_buf, CAM_W, CAM_H);
     xTaskCreate(render_task, "render", 8192, NULL, 4, NULL);
 }

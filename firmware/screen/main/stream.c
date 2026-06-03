@@ -115,7 +115,7 @@ bool stream_try_decode(uint8_t *out_buf, size_t out_size)
 
     s_new_frame      = false;
     uint32_t len     = s_frame_len;
-    int64_t  t       = esp_timer_get_time();
+    int64_t  decode_t       = esp_timer_get_time();
 
     esp_jpeg_image_cfg_t cfg = {
         .indata      = s_frame,
@@ -127,7 +127,7 @@ bool stream_try_decode(uint8_t *out_buf, size_t out_size)
     };
     esp_jpeg_image_output_t out;
     esp_err_t err = esp_jpeg_decode(&cfg, &out);
-    int64_t decode_ms = (esp_timer_get_time() - t) / 1000;
+    int64_t decode_ms = (esp_timer_get_time() - decode_t) / 1000;
     xSemaphoreGive(s_frame_mutex);
 
     if (err != ESP_OK) {
