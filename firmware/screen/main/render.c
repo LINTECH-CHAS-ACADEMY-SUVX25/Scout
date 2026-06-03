@@ -31,15 +31,6 @@ static const char *cmd_str(uint8_t c)
     return buf;
 }
 
-static void run_render_frame(void)
-{
-    int64_t render_t = esp_timer_get_time();
-    ui_render_frame();
-    int64_t render_ms = (esp_timer_get_time() - render_t) / 1000;
-    if (render_ms > 5)
-        ESP_LOGI(TAG, "[lvgl] frame in %"PRId64"ms", render_ms);
-}
-
 static void send_rc_command(uint8_t *last_cmd)
 {
     int sock = stream_get_client_sock();
@@ -68,7 +59,13 @@ static void render_task(void *arg)
 
     while (1) {
         ui_tick();
-        run_render_frame();
+
+        int64_t render_t = esp_timer_get_time();
+        ui_render_frame();
+        int64_t render_ms = (esp_timer_get_time() - render_t) / 1000;
+        if (render_ms > 5)
+        ESP_LOGI(TAG, "[lvgl] frame rendered in %"PRId64"ms", render_ms);
+        
         send_rc_command(&last_cmd);
         try_decode_frame();
         /*
