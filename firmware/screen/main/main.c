@@ -3,7 +3,8 @@
 #include "wifi.h"
 #include "display.h"
 #include "ui.h"
-#include "video.h"
+#include "stream.h"
+#include "render.h"
 #include "esp_log.h"
 
 static const char *TAG = "screen";
@@ -16,8 +17,10 @@ void app_main(void)
     ESP_LOGI(TAG, "Display initialized");
     ui_init();
     ESP_LOGI(TAG, "UI initialized");
-    video_init();
-    ESP_LOGI(TAG, "Video tasks started");
+    stream_init();
+    ESP_LOGI(TAG, "Stream task started");
+    render_init();
+    ESP_LOGI(TAG, "Render task started");
 
     vTaskDelete(NULL);
 }
