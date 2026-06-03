@@ -2,25 +2,30 @@
 #include "lvgl_port.h"
 #include "rc_protocol.h"
 #include "esp_timer.h"
-#include <stdlib.h>
 #include <stdbool.h>
 
 // ── State ─────────────────────────────────────────────────────────────────────
-
+/*
+static float s_temp = 0;
+static float s_humi = 0;
+static float s_pres = 0;
+*/
 static uint8_t           s_cmd       = CMD_STOP;
 static volatile bool     s_connected = false;
 static volatile uint32_t s_fps_val   = 0;
 static volatile bool     s_ui_dirty  = false;
 
-static float   s_sim_temp  = 23.4f;
-static float   s_sim_humi  = 45.0f;
-static float   s_sim_pres  = 1013.2f;
-static int64_t s_sim_timer = 0;
-
 // ── Public API ────────────────────────────────────────────────────────────────
 
 uint8_t ui_get_cmd(void) { return s_cmd; }
-
+/*
+void ui_set_sensor_data(float temp, float humi, float pres)
+{
+    s_temp = temp;
+    s_humi = humi;
+    s_pres = pres;
+}
+*/
 void ui_set_connected(bool connected)
 {
     s_connected = connected;
@@ -48,30 +53,17 @@ void ui_input_release(void)
     s_cmd = CMD_STOP;
 }
 
-// ── Sensor simulation ─────────────────────────────────────────────────────────
-
-static bool update_sensor_sim(void)
-{
-    int64_t now = esp_timer_get_time();
-    if (now - s_sim_timer < 2000000) return false;
-    s_sim_timer = now;
-
-    s_sim_temp += (float)((rand() % 11) - 5) * 0.1f;
-    s_sim_humi += (float)((rand() % 11) - 5) * 0.3f;
-    s_sim_pres += (float)((rand() % 7)  - 3) * 0.1f;
-    if (s_sim_humi < 0.0f)   s_sim_humi = 0.0f;
-    if (s_sim_humi > 100.0f) s_sim_humi = 100.0f;
-    return true;
-}
-
 // ── Tick / init ───────────────────────────────────────────────────────────────
 
 void ui_tick(void)
 {
-    bool sensor_updated = update_sensor_sim();
-    if (!s_ui_dirty && !sensor_updated) return;
+    if (!s_ui_dirty) return;
     s_ui_dirty = false;
-    lvgl_port_ui_update(s_connected, s_fps_val, s_sim_temp, s_sim_humi, s_sim_pres);
+    lvgl_port_ui_update(s_connected, s_fps_val); 
+    /*
+    change to -> lvgl_port_ui_update(s_temp, s_humi, s_pres, s_connected, s_fps_val); when cam sends sensor values (or mock data)
+    also change the function parameters in lvgl_port
+    */
 }
 
 void ui_init(void)

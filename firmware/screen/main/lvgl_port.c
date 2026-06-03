@@ -259,25 +259,20 @@ static void joy_event(lv_event_t *e)
 }
 
 // ── UI update (called from ui_tick) ──────────────────────────────────────────
-
-void lvgl_port_ui_update(bool connected, uint32_t fps,
-                          float temp, float humi, float pres)
+/*
+void lvgl_port_ui_update(float temp, float humi, float pres, bool connected, uint32_t fps)
+^ Future function when cam sends sensor data
+*/
+void lvgl_port_ui_update(bool connected, uint32_t fps)
 {
     lv_obj_set_style_bg_color(s_conn_dot,
         connected ? lv_color_hex(0x4CAF50) : lv_color_hex(0xE24B4A), 0);
     lv_label_set_text(s_conn_label, connected ? "ansluten" : "väntar...");
 
-    char buf[32];
+    char buf[16];
     if (fps > 0) snprintf(buf, sizeof(buf), "%u fps", (unsigned)fps);
     else         snprintf(buf, sizeof(buf), "-- fps");
     lv_label_set_text(s_fps_label, buf);
-
-    snprintf(buf, sizeof(buf), "%.1f \xc2\xb0""C", temp);
-    lv_label_set_text(s_val_temp, buf);
-    snprintf(buf, sizeof(buf), "%.0f %%", humi);
-    lv_label_set_text(s_val_humi, buf);
-    snprintf(buf, sizeof(buf), "%.1f hPa", pres);
-    lv_label_set_text(s_val_pres, buf);
 }
 
 // ── UI init ───────────────────────────────────────────────────────────────────
