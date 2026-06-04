@@ -10,9 +10,12 @@
 #define LV_HOR_RES_MAX      1024
 #define LV_VER_RES_MAX      600
 
-// Memory — öka vid lv_mem_alloc-varningar
-#define LV_MEM_CUSTOM       0
-#define LV_MEM_SIZE         (128 * 1024U)
+// Memory — LV_MEM_CUSTOM 1 uses malloc which routes to PSRAM via SPIRAM_USE_MALLOC
+#define LV_MEM_CUSTOM       1
+#define LV_MEM_CUSTOM_INCLUDE <stdlib.h>
+#define LV_MEM_CUSTOM_ALLOC   malloc
+#define LV_MEM_CUSTOM_FREE    free
+#define LV_MEM_CUSTOM_REALLOC realloc
 
 // Widgets
 #define LV_USE_BTN          1
