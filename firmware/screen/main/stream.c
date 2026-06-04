@@ -10,7 +10,6 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_heap_caps.h"
-#include "lwip/inet.h"
 #include "jpeg_decoder.h"
 
 // Receives JPEG frames over UDP, reassembling the fragments the camera sends
@@ -58,7 +57,7 @@ static void learn_cam_addr(const struct sockaddr_in *src)
     s_cam_addr.sin_port = htons(CMD_PORT);
     s_cam_known         = true;
     xSemaphoreGive(s_cam_mutex);
-    ESP_LOGI(TAG, "camera at %s", inet_ntoa(src->sin_addr));
+    ESP_LOGI(TAG, "camera at %s", udp_ip_str(src));
 }
 
 void stream_send_cmd(uint8_t cmd)

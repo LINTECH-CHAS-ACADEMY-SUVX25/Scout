@@ -26,3 +26,7 @@ void udp_send(int sock, const struct sockaddr_in *dst, const void *buf, size_t l
 
 // Builds an address from a dotted-quad IPv4 string and port.
 struct sockaddr_in udp_addr(const char *ip, uint16_t port);
+
+// Formats an address as a dotted-quad string for logging. Returns a pointer to
+// a shared static buffer — copy it if you need to keep it.
+const char *udp_ip_str(const struct sockaddr_in *addr);

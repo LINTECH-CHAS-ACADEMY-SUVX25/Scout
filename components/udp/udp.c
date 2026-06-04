@@ -74,3 +74,10 @@ struct sockaddr_in udp_addr(const char *ip, uint16_t port)
     inet_pton(AF_INET, ip, &addr.sin_addr);
     return addr;
 }
+
+const char *udp_ip_str(const struct sockaddr_in *addr)
+{
+    static char buf[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &addr->sin_addr, buf, sizeof(buf));
+    return buf;
+}
