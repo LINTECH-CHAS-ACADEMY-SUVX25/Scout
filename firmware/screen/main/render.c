@@ -13,14 +13,14 @@
 
 static const char *TAG = "render";
 
-#define CAM_W    240
-#define CAM_H    176
+#define CAM_W    640
+#define CAM_H    480
 #define SCREEN_W 1024
 #define SCREEN_H 600
 #define CAM_X    ((SCREEN_W - CAM_W) / 2)
 #define CAM_Y    ((SCREEN_H - CAM_H) / 2)
 
-static uint16_t s_canvas_buf[CAM_W * CAM_H];
+static uint16_t *s_canvas_buf;
 static bool     s_has_frame = false;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -62,7 +62,7 @@ static void blit_camera_frame(void)
 
 static void try_decode_frame(void)
 {
-    if (stream_try_decode((uint8_t *)s_canvas_buf, sizeof(s_canvas_buf)))
+    if (stream_try_decode((uint8_t *)s_canvas_buf, CAM_W * CAM_H * sizeof(uint16_t)))
         s_has_frame = true;
     if (s_has_frame)
         blit_camera_frame();
@@ -108,5 +108,7 @@ static void render_task(void *arg)
 
 void render_init(void)
 {
+    s_canvas_buf = heap_caps_malloc(CAM_W * CAM_H * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+    assert(s_canvas_buf);
     xTaskCreatePinnedToCore(render_task, "render", 8192, NULL, 4, NULL, 1);
 }

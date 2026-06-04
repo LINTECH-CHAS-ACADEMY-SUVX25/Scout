@@ -88,7 +88,9 @@ static bool recv_frame_header(int client, uint32_t *out_len)
 // Receive frame bytes into s_frame. Caller must hold s_frame_mutex.
 static bool try_store_frame(int client, uint32_t len)
 {
+    int64_t t = esp_timer_get_time();
     if (recv_all(client, s_frame, len) != ESP_OK) return false;
+    ESP_LOGI(TAG, "[tcp] recv %"PRIu32" bytes in %"PRId64"ms", len, (esp_timer_get_time() - t) / 1000);
     s_frame_len = len;
     s_new_frame = true;
     return true;
