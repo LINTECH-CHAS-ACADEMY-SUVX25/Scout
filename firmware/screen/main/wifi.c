@@ -11,7 +11,7 @@ static const char *TAG = "wifi";
 void wifi_ap_start(void)
 {
     esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) 
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
     {
         ESP_ERROR_CHECK(nvs_flash_erase());
         ret = nvs_flash_init();
@@ -24,16 +24,24 @@ void wifi_ap_start(void)
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
-    wifi_config_t ap_cfg = {
-        .ap = {
+    wifi_config_t ap_cfg =
+    {
+        .ap =
+        {
             .ssid           = AP_SSID,
             .password       = AP_PASS,
             .max_connection = 1,
             .authmode       = WIFI_AUTH_WPA2_PSK,
+            .pmf_cfg =
+            {
+                .capable  = false,
+                .required = false,
+            },
         },
     };
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_cfg));
     ESP_ERROR_CHECK(esp_wifi_start());
+    esp_wifi_set_ps(WIFI_PS_NONE);
     ESP_LOGI(TAG, "AP started: %s", AP_SSID);
 }

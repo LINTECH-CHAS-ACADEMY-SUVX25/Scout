@@ -5,6 +5,7 @@
 
 #define S3_IP        "192.168.4.1"
 #define VID_PORT     3334
+#define CMD_PORT     3335
 #define FRAME_MAGIC  0xAB
 
 #define CMD_STOP     0x00

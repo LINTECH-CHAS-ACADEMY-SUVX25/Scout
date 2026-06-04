@@ -7,7 +7,6 @@
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "lwip/sockets.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 
@@ -40,14 +39,12 @@ static const char *cmd_str(uint8_t c)
 
 static void send_rc_command(uint8_t *last_cmd)
 {
-    int sock = stream_get_client_sock();
-    if (sock < 0) return;
     uint8_t c = ui_get_cmd();
     if (c != *last_cmd) {
         ESP_LOGI(TAG, "[render] RC cmd: %s (0x%02x)", cmd_str(c), c);
         *last_cmd = c;
     }
-    send(sock, &c, 1, MSG_DONTWAIT);
+    stream_send_cmd(c);
 }
 
 static void blit_camera_frame(void)
@@ -85,9 +82,12 @@ static void render_task(void *arg)
     bool    was_connected = false;
 
     while (1) {
-        bool connected = (stream_get_client_sock() >= 0);
-        if (was_connected && !connected)
-            clear_camera_area();
+        bool connected = stream_is_connected();
+        if (connected != was_connected) {
+            ui_set_connected(connected);
+            if (!connected)
+                clear_camera_area();
+        }
         was_connected = connected;
 
         ui_tick();

@@ -2,7 +2,7 @@
 #include "motor.h"
 #include "camera.h"
 #include "motor_task.h"
-#include "network_task.h"
+#include "udp_stream.h"
 #include "monitor.h"
 #include "telemetry.h"
 #include "esp_log.h"
@@ -23,5 +23,5 @@ void app_main(void)
     monitor_start();
     telemetry_start();
     motor_task_start();
-    network_task_start();
+    udp_stream_start();
 }
