@@ -5,6 +5,7 @@
 #include "lvgl.h"
 #include "rgb_lcd_port.h"
 #include "esp_lcd_panel_ops.h"
+#include "esp_heap_caps.h"
 #include "gt911.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -20,20 +21,11 @@ static lv_obj_t *s_knob;
 static lv_obj_t *s_halo;
 static lv_obj_t *s_conn_dot;
 static lv_obj_t *s_conn_label;
-static lv_obj_t *s_fps_label;
 static lv_obj_t *s_cmd_badges[5];
-static lv_obj_t *s_bar_motor_l;
-static lv_obj_t *s_bar_motor_r;
-static lv_obj_t *s_bar_battery;
-static lv_obj_t *s_val_speed;
-static lv_obj_t *s_val_battery;
-static lv_obj_t *s_val_rssi;
-static lv_obj_t *s_val_rtt;
 static lv_obj_t *s_val_temp;
 static lv_obj_t *s_val_humi;
 static lv_obj_t *s_val_pres;
 static lv_obj_t *s_val_uptime;
-static lv_obj_t *s_val_watchdog;
 static lv_obj_t *s_val_cmd_hex;
 
 // ── LVGL driver callbacks ─────────────────────────────────────────────────────
@@ -72,9 +64,13 @@ void lvgl_port_init(void)
 {
     lv_init();
 
+    lv_color_t *lvgl_buf = heap_caps_malloc(
+        EXAMPLE_LCD_H_RES * 20 * sizeof(lv_color_t),
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    assert(lvgl_buf);
+
     static lv_disp_draw_buf_t draw_buf;
-    lv_disp_draw_buf_init(&draw_buf, display_get_fb(0), display_get_fb(1),
-                          EXAMPLE_LCD_H_RES * EXAMPLE_LCD_V_RES);
+    lv_disp_draw_buf_init(&draw_buf, lvgl_buf, NULL, EXAMPLE_LCD_H_RES * 20);
 
     static lv_disp_drv_t disp_drv;
     lv_disp_drv_init(&disp_drv);
@@ -82,7 +78,7 @@ void lvgl_port_init(void)
     disp_drv.ver_res      = EXAMPLE_LCD_V_RES;
     disp_drv.flush_cb     = flush_cb;
     disp_drv.draw_buf     = &draw_buf;
-    disp_drv.full_refresh = 1;
+    disp_drv.full_refresh = 0;
     lv_disp_drv_register(&disp_drv);
 
     static lv_indev_drv_t indev_drv;
@@ -91,7 +87,7 @@ void lvgl_port_init(void)
     indev_drv.read_cb = touch_read_cb;
     lv_indev_drv_register(&indev_drv);
 
-    xTaskCreate(tick_task, "lvgl_tick", 2048, NULL, 5, NULL);
+    xTaskCreatePinnedToCore(tick_task, "lvgl_tick", 2048, NULL, 5, NULL, 1);
 
     lvgl_port_ui_init();
 }
@@ -100,22 +96,15 @@ void lvgl_port_init(void)
 
 void lvgl_port_render_frame(void)
 {
-    lv_timer_handler();
+    lv_timer_t *refr = lv_disp_get_default()->refr_timer;
+
+    lv_timer_pause(refr);
+    lv_timer_handler();                     // input phase: indev fires, dirty areas accumulate
+
+    lv_timer_resume(refr);
+    lv_refr_now(lv_disp_get_default());     // render all accumulated dirty areas immediately
 }
 
-void *lvgl_port_create_video_canvas(uint8_t *buf, int w, int h)
-{
-    lv_obj_t *canvas = lv_canvas_create(lv_scr_act());
-    lv_canvas_set_buffer(canvas, (lv_color_t *)buf, w, h, LV_IMG_CF_TRUE_COLOR);
-    lv_obj_align(canvas, LV_ALIGN_CENTER, 0, 0);
-    lv_canvas_fill_bg(canvas, lv_color_hex(0x111111), LV_OPA_COVER);
-    return (void *)canvas;
-}
-
-void lvgl_port_canvas_invalidate(void *canvas)
-{
-    lv_obj_invalidate((lv_obj_t *)canvas);
-}
 
 // ── Widget helpers ────────────────────────────────────────────────────────────
 
@@ -260,19 +249,15 @@ static void joy_event(lv_event_t *e)
 
 // ── UI update (called from ui_tick) ──────────────────────────────────────────
 /*
-void lvgl_port_ui_update(float temp, float humi, float pres, bool connected, uint32_t fps)
+void lvgl_port_ui_update(float temp, float humi, float pres, bool connected)
 ^ Future function when cam sends sensor data
 */
-void lvgl_port_ui_update(bool connected, uint32_t fps)
+void lvgl_port_ui_update(bool connected)
 {
     lv_obj_set_style_bg_color(s_conn_dot,
         connected ? lv_color_hex(0x4CAF50) : lv_color_hex(0xE24B4A), 0);
-    lv_label_set_text(s_conn_label, connected ? "ansluten" : "väntar...");
+    lv_label_set_text(s_conn_label, connected ? "connected" : "waiting...");
 
-    char buf[16];
-    if (fps > 0) snprintf(buf, sizeof(buf), "%u fps", (unsigned)fps);
-    else         snprintf(buf, sizeof(buf), "-- fps");
-    lv_label_set_text(s_fps_label, buf);
 }
 
 // ── UI init ───────────────────────────────────────────────────────────────────
@@ -315,10 +300,6 @@ static void lvgl_port_ui_init(void)
     lv_obj_set_style_radius(s_conn_dot, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_color(s_conn_dot, lv_color_hex(0xE24B4A), 0);
     lv_obj_set_style_bg_opa(s_conn_dot, LV_OPA_COVER, 0);
-
-    s_fps_label = make_label(topbar, "-- fps",
-        lv_color_hex(0x444444), &lv_font_montserrat_14);
-    lv_obj_align(s_fps_label, LV_ALIGN_RIGHT_MID, -14, 0);
 
     // ── Bottombar ────────────────────────────────────────────────────────────
     lv_obj_t *botbar = make_obj(lv_scr_act());
@@ -374,19 +355,14 @@ static void lvgl_port_ui_init(void)
     lv_obj_align(tele_hdr, LV_ALIGN_TOP_LEFT, 14, 10);
 
     lv_obj_t *tele_cont = make_obj(left);
-    lv_obj_set_size(tele_cont, 172, 220);
+    lv_obj_set_size(tele_cont, 172, 110);
     lv_obj_set_pos(tele_cont, 14, 28);
 
-    s_val_speed    = make_tele_row(tele_cont, "hastighet", "0.0 m/s",  lv_color_hex(0x222222),   0);
-    s_val_battery  = make_tele_row(tele_cont, "batteri",   "74 %",     lv_color_hex(0x854F0B),  22);
-    s_val_rssi     = make_tele_row(tele_cont, "wifi rssi", "-58 dBm",  lv_color_hex(0x222222),  44);
-    s_val_rtt      = make_tele_row(tele_cont, "rtt",       "12 ms",    lv_color_hex(0x2E7D32),  66);
-    s_val_temp     = make_tele_row(tele_cont, "temp",      "23.4 \xc2\xb0""C", lv_color_hex(0x222222),  88);
-    s_val_humi     = make_tele_row(tele_cont, "fukt",      "45 %",     lv_color_hex(0x222222), 110);
-    s_val_pres     = make_tele_row(tele_cont, "tryck",     "1013 hPa", lv_color_hex(0x222222), 132);
-    s_val_uptime   = make_tele_row(tele_cont, "uptime",    "00:00:00", lv_color_hex(0x222222), 154);
-    s_val_watchdog = make_tele_row(tele_cont, "watchdog",  "OK",       lv_color_hex(0x2E7D32), 176);
-    s_val_cmd_hex  = make_tele_row(tele_cont, "cmd",       "0x00",     lv_color_hex(0x999999), 198);
+    s_val_cmd_hex  = make_tele_row(tele_cont, "cmd",         "0x00",     lv_color_hex(0x999999),   0);
+    s_val_temp     = make_tele_row(tele_cont, "temperature", "--.- C",   lv_color_hex(0x222222),  22);
+    s_val_humi     = make_tele_row(tele_cont, "humidity",    "-- %",     lv_color_hex(0x222222),  44);
+    s_val_pres     = make_tele_row(tele_cont, "pressure",    "---- hPa", lv_color_hex(0x222222),  66);
+    s_val_uptime   = make_tele_row(tele_cont, "uptime",      "00:00:00", lv_color_hex(0x222222),  88);
 
     lv_obj_t *divider = make_obj(left);
     lv_obj_set_size(divider, LEFT_W, 1);
@@ -492,45 +468,6 @@ static void lvgl_port_ui_init(void)
     }
     update_cmd_badges(CMD_STOP);
 
-    // ── Video area ───────────────────────────────────────────────────────────
-    lv_obj_t *video = make_obj(lv_scr_act());
-    lv_obj_set_size(video, VIDEO_W, CONTENT_H);
-    lv_obj_set_pos(video, LEFT_W, CONTENT_Y);
-    lv_obj_set_style_bg_color(video, lv_color_hex(0xF0F0EC), 0);
-    lv_obj_set_style_bg_opa(video, LV_OPA_COVER, 0);
-
-    make_label(video, "CAM // ESP32-CAM",
-        lv_color_hex(0xCCCCCC), &lv_font_montserrat_14);
-    lv_obj_align(lv_obj_get_child(video, 0), LV_ALIGN_TOP_LEFT, 10, 8);
-    make_label(video, "MJPEG",
-        lv_color_hex(0xCCCCCC), &lv_font_montserrat_14);
-    lv_obj_align(lv_obj_get_child(video, 1), LV_ALIGN_TOP_RIGHT, -10, 8);
-    make_label(video, "1024x600",
-        lv_color_hex(0xCCCCCC), &lv_font_montserrat_14);
-    lv_obj_align(lv_obj_get_child(video, 2), LV_ALIGN_BOTTOM_LEFT, 10, -8);
-    make_label(video, "NO SIGNAL",
-        lv_color_hex(0xCCCCCC), &lv_font_montserrat_14);
-    lv_obj_align(lv_obj_get_child(video, 3), LV_ALIGN_BOTTOM_RIGHT, -10, -8);
-
-    lv_obj_t *v_h = make_obj(video);
-    lv_obj_set_size(v_h, 28, 1);
-    lv_obj_align(v_h, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_bg_color(v_h, lv_color_hex(0xCCCCCC), 0);
-    lv_obj_set_style_bg_opa(v_h, LV_OPA_COVER, 0);
-
-    lv_obj_t *v_v = make_obj(video);
-    lv_obj_set_size(v_v, 1, 28);
-    lv_obj_align(v_v, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_bg_color(v_v, lv_color_hex(0xCCCCCC), 0);
-    lv_obj_set_style_bg_opa(v_v, LV_OPA_COVER, 0);
-
-    lv_obj_t *v_dot = make_obj(video);
-    lv_obj_set_size(v_dot, 4, 4);
-    lv_obj_align(v_dot, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_radius(v_dot, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(v_dot, lv_color_hex(0xBBBBBB), 0);
-    lv_obj_set_style_bg_opa(v_dot, LV_OPA_COVER, 0);
-
     // ── Right panel ──────────────────────────────────────────────────────────
     lv_obj_t *right = make_obj(lv_scr_act());
     lv_obj_set_size(right, RIGHT_W, CONTENT_H);
@@ -542,53 +479,4 @@ static void lvgl_port_ui_init(void)
     lv_obj_set_style_border_color(right, lv_color_hex(0xE8E8E4), 0);
     lv_obj_set_style_radius(right, 0, 0);
 
-    lv_obj_t *mot_hdr = make_label(right, "MOTORER",
-        lv_color_hex(0xAAAAAA), &lv_font_montserrat_14);
-    lv_obj_set_style_text_letter_space(mot_hdr, 2, 0);
-    lv_obj_align(mot_hdr, LV_ALIGN_TOP_LEFT, 12, 10);
-
-    const char *bar_keys[] = { "Motor L", "Motor R", "Batteri" };
-    lv_obj_t  **bar_ptrs[] = { &s_bar_motor_l, &s_bar_motor_r, &s_bar_battery };
-    int32_t     bar_y      = 32;
-    for (int i = 0; i < 3; i++) {
-        lv_obj_t *k = make_label(right, bar_keys[i],
-            lv_color_hex(0xAAAAAA), &lv_font_montserrat_14);
-        lv_obj_set_pos(k, 12, bar_y);
-        lv_obj_t *pct = make_label(right, "0 %",
-            lv_color_hex(0x555555), &lv_font_montserrat_14);
-        lv_obj_align(pct, LV_ALIGN_TOP_RIGHT, -12, bar_y);
-        lv_obj_t *fill = make_bar(right, RIGHT_W - 24);
-        lv_obj_set_pos(lv_obj_get_parent(fill), 12, bar_y + 16);
-        *bar_ptrs[i] = fill;
-        bar_y += 36;
-    }
-
-    lv_obj_t *rdiv = make_obj(right);
-    lv_obj_set_size(rdiv, RIGHT_W, 1);
-    lv_obj_set_pos(rdiv, 0, bar_y + 4);
-    lv_obj_set_style_bg_color(rdiv, lv_color_hex(0xEEEEEA), 0);
-    lv_obj_set_style_bg_opa(rdiv, LV_OPA_COVER, 0);
-
-    lv_obj_t *sys_hdr = make_label(right, "SYSTEM",
-        lv_color_hex(0xAAAAAA), &lv_font_montserrat_14);
-    lv_obj_set_style_text_letter_space(sys_hdr, 2, 0);
-    lv_obj_set_pos(sys_hdr, 12, bar_y + 12);
-
-    const char  *sys_keys[] = { "Tasks", "Wifi", "cmd" };
-    const char  *sys_vals[] = { "4 / 4", "OK",   "0x00" };
-    lv_color_t   sys_cols[] = {
-        lv_color_hex(0x222222),
-        lv_color_hex(0x2E7D32),
-        lv_color_hex(0x999999)
-    };
-    int32_t sys_y = bar_y + 30;
-    for (int i = 0; i < 3; i++) {
-        lv_obj_t *k = make_label(right, sys_keys[i],
-            lv_color_hex(0xAAAAAA), &lv_font_montserrat_14);
-        lv_obj_set_pos(k, 12, sys_y);
-        lv_obj_t *v = make_label(right, sys_vals[i], sys_cols[i],
-            &lv_font_montserrat_14);
-        lv_obj_align(v, LV_ALIGN_TOP_RIGHT, -12, sys_y);
-        sys_y += 22;
-    }
 }

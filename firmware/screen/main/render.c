@@ -1,8 +1,10 @@
 #include "render.h"
 #include "stream.h"
 #include "ui.h"
+#include "display.h"
 #include "rc_protocol.h"
 #include <inttypes.h>
+#include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "lwip/sockets.h"
@@ -11,10 +13,15 @@
 
 static const char *TAG = "render";
 
-#define CAM_W 240
-#define CAM_H 176
+#define CAM_W    240
+#define CAM_H    176
+#define SCREEN_W 1024
+#define SCREEN_H 600
+#define CAM_X    ((SCREEN_W - CAM_W) / 2)
+#define CAM_Y    ((SCREEN_H - CAM_H) / 2)
 
 static uint16_t s_canvas_buf[CAM_W * CAM_H];
+static bool     s_has_frame = false;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -43,10 +50,30 @@ static void send_rc_command(uint8_t *last_cmd)
     send(sock, &c, 1, MSG_DONTWAIT);
 }
 
+static void blit_camera_frame(void)
+{
+    uint8_t *fb = (uint8_t *)display_get_fb(0);
+    for (int row = 0; row < CAM_H; row++) {
+        memcpy(fb + ((CAM_Y + row) * SCREEN_W + CAM_X) * 2,
+               (uint8_t *)s_canvas_buf + row * CAM_W * 2,
+               CAM_W * 2);
+    }
+}
+
 static void try_decode_frame(void)
 {
     if (stream_try_decode((uint8_t *)s_canvas_buf, sizeof(s_canvas_buf)))
-        ui_canvas_invalidate();
+        s_has_frame = true;
+    if (s_has_frame)
+        blit_camera_frame();
+}
+
+static void clear_camera_area(void)
+{
+    uint8_t *fb = (uint8_t *)display_get_fb(0);
+    for (int row = 0; row < CAM_H; row++) {
+        memset(fb + ((CAM_Y + row) * SCREEN_W + CAM_X) * 2, 0x11, CAM_W * 2);
+    }
 }
 
 // ── Render task ───────────────────────────────────────────────────────────────
@@ -54,10 +81,15 @@ static void try_decode_frame(void)
 static void render_task(void *arg)
 {
     (void)arg;
-    uint8_t last_cmd = 0xFF;
-    //int64_t last_log_ms = 0;
+    uint8_t last_cmd      = 0xFF; // This is probably why scout_cam drives both motors backwards when establishing a connection. Change to 0x00 maybe
+    bool    was_connected = false;
 
     while (1) {
+        bool connected = (stream_get_client_sock() >= 0);
+        if (was_connected && !connected)
+            clear_camera_area();
+        was_connected = connected;
+
         ui_tick();
 
         int64_t render_t = esp_timer_get_time();
@@ -68,13 +100,6 @@ static void render_task(void *arg)
         
         send_rc_command(&last_cmd);
         try_decode_frame();
-        /*
-        int64_t now_ms = esp_timer_get_time() / 1000;
-        if (now_ms - last_log_ms >= 1000) {
-            ESP_LOGI(TAG, "[render] Runtime: %"PRId64"ms", now_ms);
-            last_log_ms = now_ms;
-        }
-        */
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
@@ -83,6 +108,5 @@ static void render_task(void *arg)
 
 void render_init(void)
 {
-    ui_canvas_init((uint8_t *)s_canvas_buf, CAM_W, CAM_H);
-    xTaskCreate(render_task, "render", 8192, NULL, 4, NULL);
+    xTaskCreatePinnedToCore(render_task, "render", 8192, NULL, 4, NULL, 1);
 }

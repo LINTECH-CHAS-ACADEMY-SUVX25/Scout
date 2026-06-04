@@ -53,8 +53,13 @@ esp_lcd_panel_handle_t waveshare_esp32_s3_rgb_lcd_init()
             },
         },
         .data_width = EXAMPLE_RGB_DATA_WIDTH,                    // Data width for RGB signals
+        .in_color_format = LCD_COLOR_FMT_RGB565,                 // Framebuffer pixel format
+        .out_color_format = LCD_COLOR_FMT_RGB565,                // Panel output pixel format
         .num_fbs = EXAMPLE_LCD_RGB_BUFFER_NUMS,                  // Number of framebuffers for double/triple buffering
         .bounce_buffer_size_px = EXAMPLE_RGB_BOUNCE_BUFFER_SIZE, // Bounce buffer size in pixels
+        .dma_burst_size = 64,                                    // DMA burst size in bytes (replaces psram_trans_align)
+        .hsync_gpio_num = EXAMPLE_LCD_IO_RGB_HSYNC,              // GPIO for horizontal sync signal
+        .vsync_gpio_num = EXAMPLE_LCD_IO_RGB_VSYNC,              // GPIO for vertical sync signal
         .de_gpio_num = EXAMPLE_LCD_IO_RGB_DE,                    // GPIO for data enable signal
         .pclk_gpio_num = EXAMPLE_LCD_IO_RGB_PCLK,                // GPIO for pixel clock signal
         .disp_gpio_num = EXAMPLE_LCD_IO_RGB_DISP,                // GPIO for display enable signal
@@ -79,7 +84,7 @@ esp_lcd_panel_handle_t waveshare_esp32_s3_rgb_lcd_init()
         },
         .flags = {
             .fb_in_psram = 1, // Use PSRAM for framebuffers to save internal SRAM
-            .double_fb = 1,
+            //.refresh_on_demand = 1,
         },
     };
 
