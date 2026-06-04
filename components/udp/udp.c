@@ -41,7 +41,7 @@ void udp_set_rcvbuf(int sock, int bytes)
     setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &bytes, sizeof(bytes));
 }
 
-int udp_recv(int sock, void *buf, size_t len, struct sockaddr_in *src)
+int udp_rx(int sock, void *buf, size_t len, struct sockaddr_in *src)
 {
     if (src)
     {
@@ -59,7 +59,7 @@ int udp_try_recv(int sock, void *buf, size_t len)
     return n;
 }
 
-void udp_send(int sock, const struct sockaddr_in *dst, const void *buf, size_t len)
+void udp_tx(int sock, const struct sockaddr_in *dst, const void *buf, size_t len)
 {
     sendto(sock, buf, len, 0, (const struct sockaddr *)dst, sizeof(*dst));
 }

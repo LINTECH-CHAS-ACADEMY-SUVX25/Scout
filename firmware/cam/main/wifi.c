@@ -59,17 +59,11 @@ void wifi_connect(void)
         {
             .ssid     = AP_SSID,
             .password = AP_PASS,
-            .pmf_cfg =
-            {
-                .capable  = false,
-                .required = false,
-            },
         },
     };
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg));
     ESP_ERROR_CHECK(esp_wifi_start());
-    esp_wifi_set_ps(WIFI_PS_NONE);
 
     ESP_LOGI(TAG, "Connecting to %s...", AP_SSID);
     xEventGroupWaitBits(s_wifi_events, CONNECTED_BIT, pdFALSE, pdTRUE, portMAX_DELAY);

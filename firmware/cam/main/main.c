@@ -20,8 +20,8 @@ void app_main(void)
     ESP_ERROR_CHECK(camera_init());
     ESP_LOGI(TAG, "Camera ready");
 
-    monitor_start();
-    telemetry_start();
+    //monitor_start();
+    //telemetry_start();
     motor_task_start();
     udp_stream_start();
 }

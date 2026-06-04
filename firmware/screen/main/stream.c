@@ -63,7 +63,7 @@ void stream_send_cmd(uint8_t cmd)
     xSemaphoreGive(s_cam_mutex);
 
     if (!known || s_sock < 0) return;
-    udp_send(s_sock, &addr, &cmd, 1);
+    udp_tx(s_sock, &addr, &cmd, 1);
 }
 
 bool stream_is_connected(void)
@@ -112,7 +112,7 @@ static void udp_server_task(void *arg)
     while (1)
     {
         struct sockaddr_in src;
-        int n = udp_recv(sock, pkt, sizeof(pkt), &src);
+        int n = udp_rx(sock, pkt, sizeof(pkt), &src);
         if (n < 4) continue;
 
         uint16_t seq;

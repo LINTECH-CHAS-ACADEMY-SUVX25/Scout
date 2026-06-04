@@ -46,7 +46,7 @@ static void send_frame(int sock, const struct sockaddr_in *dest, const uint8_t *
         p   += chunk;
         sent += chunk;
 
-        udp_send(sock, dest, s_pkt, p - s_pkt);
+        udp_tx(sock, dest, s_pkt, p - s_pkt);
     }
 }
 
@@ -71,6 +71,8 @@ static void udp_stream_task(void *arg)
             vTaskDelay(pdMS_TO_TICKS(1000));
         }
     }
+    struct timeval tv = { .tv_sec = 1, .tv_usec = 0 };
+    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
     ESP_LOGI(TAG, "streaming to %s:%d, commands on port %d", S3_IP, VID_PORT, CMD_PORT);
 
     esp_task_wdt_add(NULL);
