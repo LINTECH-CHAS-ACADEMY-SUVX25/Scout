@@ -9,7 +9,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "lwip/sockets.h"
-#include "jpeg_decoder.h"
+#include "jpeg_decode.h"
 
 static const char *TAG = "stream";
 
@@ -119,25 +119,14 @@ bool stream_try_decode(uint8_t *out_buf, size_t out_size)
     uint32_t len     = s_frame_len;
     int64_t  decode_t       = esp_timer_get_time();
 
-    esp_jpeg_image_cfg_t cfg = {
-        .indata      = s_frame,
-        .indata_size = len,
-        .outbuf      = out_buf,
-        .outbuf_size = out_size,
-        .out_format  = JPEG_IMAGE_FORMAT_RGB565,
-        .out_scale   = JPEG_IMAGE_SCALE_0,
-    };
-    esp_jpeg_image_output_t out;
-    esp_err_t err = esp_jpeg_decode(&cfg, &out);
+    uint16_t w, h;
+    bool ok = jpeg_decode_rgb565(s_frame, (int)len, out_buf, out_size, &w, &h);
     int64_t decode_ms = (esp_timer_get_time() - decode_t) / 1000;
     xSemaphoreGive(s_frame_mutex);
 
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "[stream] JPEG decode failed: %s", esp_err_to_name(err));
-        return false;
-    }
-    ESP_LOGI(TAG, "[stream] Decoded %"PRIu32"x%"PRIu32" in %"PRId64"ms (%"PRIu32" bytes)",
-             (uint32_t)out.width, (uint32_t)out.height, decode_ms, len);
+    if (!ok) return false;
+    ESP_LOGI(TAG, "[stream] Decoded %"PRIu16"x%"PRIu16" in %"PRId64"ms (%"PRIu32" bytes)",
+             w, h, decode_ms, len);
     return true;
 }
 

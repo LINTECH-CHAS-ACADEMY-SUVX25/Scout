@@ -108,7 +108,7 @@ static void render_task(void *arg)
 
 void render_init(void)
 {
-    s_canvas_buf = heap_caps_malloc(CAM_W * CAM_H * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+    s_canvas_buf = heap_caps_aligned_alloc(16, CAM_W * CAM_H * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
     assert(s_canvas_buf);
     xTaskCreatePinnedToCore(render_task, "render", 8192, NULL, 4, NULL, 1);
 }
