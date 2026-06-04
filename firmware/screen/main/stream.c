@@ -1,183 +1,204 @@
 #include "stream.h"
-#include "ui.h"
+#include "udp.h"
 #include "rc_protocol.h"
 #include <inttypes.h>
-#include <stdbool.h>
+#include <string.h>
+#include <assert.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "esp_log.h"
 #include "esp_timer.h"
-#include "lwip/sockets.h"
 #include "jpeg_decode.h"
+#include "esp_heap_caps.h"
+
+// Receives JPEG frames over UDP, reassembling the fragments the camera sends
+// (packet layout lives in cam/udp_stream.c). A completed frame is handed to the
+// render task through two ping-pong buffers: the receiver fills one while the
+// decoder reads the other, so decoding never stalls the socket.
+//
+// UDP has no connection, so stream_is_connected() reports liveness from how
+// recently a full frame arrived.
+
+#define LIVENESS_MS 2000
 
 static const char *TAG = "stream";
 
-static uint8_t           s_frame[32 * 1024];
-static uint32_t          s_frame_len   = 0;
-static bool              s_new_frame   = false;
+static uint8_t          *s_asm_buf;     // receiver writes here
+static uint8_t          *s_dec_buf;     // decoder reads here
+static uint32_t          s_dec_len;
+static bool              s_new_frame;
+static bool              s_decoding;
 static SemaphoreHandle_t s_frame_mutex;
-static SemaphoreHandle_t s_sock_mutex;
-static int               s_client_sock = -1;
 
-// ── Socket helpers ────────────────────────────────────────────────────────────
+static int                s_sock = -1;
+static struct sockaddr_in s_cam_addr;
+static bool               s_cam_known;
+static SemaphoreHandle_t  s_cam_mutex;
+static volatile uint32_t  s_last_rx_ms;   // 32-bit so the render task reads it atomically
 
-int stream_get_client_sock(void)
+static struct
 {
-    xSemaphoreTake(s_sock_mutex, portMAX_DELAY);
-    int sock = s_client_sock;
-    xSemaphoreGive(s_sock_mutex);
-    return sock;
+    uint16_t seq;
+    uint8_t  frags;         // 0 when no frame is in progress
+    uint64_t rx_mask;       // bit N set once fragment N has arrived
+    uint32_t frame_len;
+} s_rx;
+
+static void learn_cam_addr(const struct sockaddr_in *src)
+{
+    xSemaphoreTake(s_cam_mutex, portMAX_DELAY);
+    s_cam_addr          = *src;
+    s_cam_addr.sin_port = htons(CMD_PORT);
+    s_cam_known         = true;
+    xSemaphoreGive(s_cam_mutex);
+    ESP_LOGI(TAG, "camera at %s", udp_ip_str(src));
 }
 
-static void set_client_sock(int sock)
+void stream_send_cmd(uint8_t cmd)
 {
-    xSemaphoreTake(s_sock_mutex, portMAX_DELAY);
-    s_client_sock = sock;
-    xSemaphoreGive(s_sock_mutex);
+    xSemaphoreTake(s_cam_mutex, portMAX_DELAY);
+    bool known = s_cam_known;
+    struct sockaddr_in addr = s_cam_addr;
+    xSemaphoreGive(s_cam_mutex);
+
+    if (!known || s_sock < 0) return;
+    udp_tx(s_sock, &addr, &cmd, 1);
 }
 
-// ── Receive helpers ───────────────────────────────────────────────────────────
-
-static esp_err_t recv_all(int sock, void *buf, size_t len)
+bool stream_is_connected(void)
 {
-    uint8_t *p = buf;
-    while (len > 0) {
-        int n = recv(sock, p, len, 0);
-        if (n <= 0) return ESP_FAIL;
-        p += n;
-        len -= n;
+    return (uint32_t)(esp_timer_get_time() / 1000) - s_last_rx_ms < LIVENESS_MS;
+}
+
+static void begin_frame(uint16_t seq, uint8_t frags)
+{
+    s_rx.seq       = seq;
+    s_rx.frags     = frags;
+    s_rx.rx_mask   = 0;
+    s_rx.frame_len = 0;
+}
+
+// Swap the freshly assembled frame in for decoding, unless the decoder is still
+// busy with the previous one — in that case we drop it and wait for the next.
+static void publish_frame(void)
+{
+    xSemaphoreTake(s_frame_mutex, portMAX_DELAY);
+    if (!s_decoding)
+    {
+        uint8_t *tmp = s_dec_buf;
+        s_dec_buf   = s_asm_buf;
+        s_asm_buf   = tmp;
+        s_dec_len   = s_rx.frame_len;
+        s_new_frame = true;
     }
-    return ESP_OK;
+    xSemaphoreGive(s_frame_mutex);
 }
 
-static int create_tcp_server(uint16_t port)
+static void udp_server_task(void *arg)
 {
-    struct sockaddr_in addr = {
-        .sin_family      = AF_INET,
-        .sin_port        = htons(port),
-        .sin_addr.s_addr = INADDR_ANY,
-    };
-    int server = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (server < 0) { ESP_LOGE(TAG, "[tcp] socket() failed"); return -1; }
-    if (bind(server, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
-        ESP_LOGE(TAG, "[tcp] bind() failed"); close(server); return -1;
+    int sock = udp_open(VID_PORT);
+    if (sock < 0)
+    {
+        vTaskDelete(NULL);
+        return;
     }
-    if (listen(server, 1) != 0) {
-        ESP_LOGE(TAG, "[tcp] listen() failed"); close(server); return -1;
+    udp_set_rcvbuf(sock, 48 * 1024);
+    s_sock = sock;
+    ESP_LOGI(TAG, "UDP video server on port %d", VID_PORT);
+
+    static uint8_t pkt[PKT_MAX];
+
+    while (1)
+    {
+        struct sockaddr_in src;
+        int n = udp_rx(sock, pkt, sizeof(pkt), &src);
+        if (n < 4) continue;
+
+        uint16_t seq;
+        memcpy(&seq, pkt, 2);
+        seq = ntohs(seq);
+        uint8_t fi    = pkt[2];
+        uint8_t frags = pkt[3];
+        if (frags == 0 || fi >= frags || frags > MAX_FRAGS) continue;
+
+        if (!s_cam_known) learn_cam_addr(&src);
+
+        if (s_rx.frags == 0 || seq != s_rx.seq || frags != s_rx.frags)
+            begin_frame(seq, frags);
+
+        const uint8_t *data = pkt + 4;
+        int            data_len = n - 4;
+        uint32_t       offset;
+
+        if (fi == 0)
+        {
+            if (data_len < 5 || data[0] != FRAME_MAGIC) continue;
+            uint32_t flen_be;
+            memcpy(&flen_be, data + 1, 4);
+            s_rx.frame_len = ntohl(flen_be);
+            if (s_rx.frame_len > FRAME_MAX)
+            {
+                s_rx.frags = 0;
+                continue;
+            }
+            data     += 5;
+            data_len -= 5;
+            offset = 0;
+        } else
+        {
+            offset = FIRST_DATA + (uint32_t)(fi - 1) * FRAG_SIZE;
+        }
+
+        if ((uint32_t)data_len > FRAME_MAX - offset) continue;
+        memcpy(s_asm_buf + offset, data, data_len);
+        s_rx.rx_mask |= (1ULL << fi);
+
+        if (s_rx.rx_mask != ((1ULL << frags) - 1)) continue;
+
+        publish_frame();
+        s_rx.frags   = 0;
+        s_last_rx_ms = (uint32_t)(esp_timer_get_time() / 1000);
     }
-    return server;
 }
 
-static bool recv_frame_header(int client, uint32_t *out_len)
-{
-    uint8_t magic;
-    if (recv_all(client, &magic, 1) != ESP_OK) return false;
-    if (magic != FRAME_MAGIC) {
-        ESP_LOGE(TAG, "[tcp] Bad frame magic: 0x%02x", magic);
-        return false;
-    }
-    uint32_t len_net;
-    if (recv_all(client, &len_net, 4) != ESP_OK) return false;
-    uint32_t len = ntohl(len_net);
-    if (len > sizeof(s_frame)) return false;
-    *out_len = len;
-    return true;
-}
-
-// Receive frame bytes into s_frame. Caller must hold s_frame_mutex.
-static bool try_store_frame(int client, uint32_t len)
-{
-    int64_t t = esp_timer_get_time();
-    if (recv_all(client, s_frame, len) != ESP_OK) return false;
-    ESP_LOGI(TAG, "[tcp] recv %"PRIu32" bytes in %"PRId64"ms", len, (esp_timer_get_time() - t) / 1000);
-    s_frame_len = len;
-    s_new_frame = true;
-    return true;
-}
-
-// Drain and discard frame bytes when the decoder is busy.
-static bool drain_frame(int client, uint32_t len)
-{
-    uint8_t sink[512];
-    while (len > 0) {
-        uint32_t n = len < sizeof(sink) ? len : sizeof(sink);
-        if (recv_all(client, sink, n) != ESP_OK) return false;
-        len -= n;
-    }
-    return true;
-}
-
-// ── JPEG decode (called from render task) ─────────────────────────────────────
-
+// Decodes the most recently published frame into out_buf. Called from the render
+// task; the frame mutex is only held while swapping pointers, never during the
+// decode itself.
 bool stream_try_decode(uint8_t *out_buf, size_t out_size)
 {
     if (xSemaphoreTake(s_frame_mutex, 0) != pdTRUE) return false;
     if (!s_new_frame) { xSemaphoreGive(s_frame_mutex); return false; }
 
-    s_new_frame      = false;
-    uint32_t len     = s_frame_len;
-    int64_t  decode_t       = esp_timer_get_time();
+    s_new_frame  = false;
+    s_decoding   = true;
+    uint8_t  *src = s_dec_buf;
+    uint32_t  len = s_dec_len;
+    int64_t   t   = esp_timer_get_time();
+    xSemaphoreGive(s_frame_mutex);
 
     uint16_t w, h;
-    bool ok = jpeg_decode_rgb565(s_frame, (int)len, out_buf, out_size, &w, &h);
-    int64_t decode_ms = (esp_timer_get_time() - decode_t) / 1000;
+    bool ok = jpeg_decode_rgb565(src, (int)len, out_buf, out_size, &w, &h);
+    int64_t decode_ms = (esp_timer_get_time() - t) / 1000;
+
+    xSemaphoreTake(s_frame_mutex, portMAX_DELAY);
+    s_decoding = false;
     xSemaphoreGive(s_frame_mutex);
 
     if (!ok) return false;
-    ESP_LOGI(TAG, "[stream] Decoded %"PRIu16"x%"PRIu16" in %"PRId64"ms (%"PRIu32" bytes)",
+    ESP_LOGI(TAG, "decoded %"PRIu16"x%"PRIu16" in %"PRId64"ms (%"PRIu32" bytes)",
              w, h, decode_ms, len);
     return true;
 }
 
-// ── TCP server task ───────────────────────────────────────────────────────────
-
-static void tcp_server_task(void *arg)
-{
-    int server = create_tcp_server(VID_PORT);
-    if (server < 0) { vTaskDelete(NULL); return; }
-    ESP_LOGI(TAG, "[tcp] Server ready on port %d", VID_PORT);
-
-    while (1) {
-        ESP_LOGI(TAG, "[tcp] Waiting for camera to connect...");
-        int client = accept(server, NULL, NULL);
-        if (client < 0) continue;
-
-        set_client_sock(client);
-        ui_set_connected(true);
-        ESP_LOGI(TAG, "[tcp] Camera connected");
-
-        uint32_t frames_rx = 0, frames_dropped = 0;
-
-        while (1) {
-            uint32_t len;
-            if (!recv_frame_header(client, &len)) break;
-
-            if (xSemaphoreTake(s_frame_mutex, 0) == pdTRUE) {
-                if (!try_store_frame(client, len)) { xSemaphoreGive(s_frame_mutex); break; }
-                xSemaphoreGive(s_frame_mutex);
-                frames_rx++;
-            } else {
-                if (!drain_frame(client, len)) break;
-                frames_dropped++;
-                ESP_LOGW(TAG, "[tcp] Frame dropped (decoder busy) — total: %"PRIu32"/%"PRIu32,
-                         frames_dropped, frames_rx + frames_dropped);
-            }
-        }
-
-        set_client_sock(-1);
-        close(client);
-        ui_set_connected(false);
-        ESP_LOGW(TAG, "[tcp] Camera disconnected — %"PRIu32" received, %"PRIu32" dropped",
-                 frames_rx, frames_dropped);
-    }
-}
-
-// ── Init ──────────────────────────────────────────────────────────────────────
 
 void stream_init(void)
 {
+    s_asm_buf = heap_caps_malloc(FRAME_MAX, MALLOC_CAP_SPIRAM);
+    s_dec_buf = heap_caps_malloc(FRAME_MAX, MALLOC_CAP_SPIRAM);
+    assert(s_asm_buf && s_dec_buf);
+
     s_frame_mutex = xSemaphoreCreateMutex();
-    s_sock_mutex  = xSemaphoreCreateMutex();
-    xTaskCreatePinnedToCore(tcp_server_task, "tcp_server", 4096, NULL, 5, NULL, 0);
+    s_cam_mutex   = xSemaphoreCreateMutex();
+    xTaskCreatePinnedToCore(udp_server_task, "udp_server", 4096, NULL, 5, NULL, 0);
 }
