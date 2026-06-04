@@ -1,13 +1,12 @@
 #include "udp_stream.h"
 #include "motor_task.h"
 #include "rc_protocol.h"
+#include "udp.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_camera.h"
 #include "esp_task_wdt.h"
-#include "lwip/sockets.h"
-#include "lwip/inet.h"
 #include <string.h>
 
 // A JPEG frame is split across UDP fragments to stay under the WiFi MTU:
@@ -21,25 +20,6 @@
 static const char *TAG = "udp_stream";
 
 static uint8_t s_pkt[PKT_MAX];
-
-static int open_socket(void)
-{
-    struct sockaddr_in local =
-    {
-        .sin_family      = AF_INET,
-        .sin_port        = htons(CMD_PORT),
-        .sin_addr.s_addr = INADDR_ANY,
-    };
-
-    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    if (sock < 0) return -1;
-    if (bind(sock, (struct sockaddr *)&local, sizeof(local)) != 0)
-    {
-        close(sock);
-        return -1;
-    }
-    return sock;
-}
 
 static void send_frame(int sock, const struct sockaddr_in *dest, const uint8_t *buf, uint32_t len, uint16_t seq)
 {
@@ -70,30 +50,25 @@ static void send_frame(int sock, const struct sockaddr_in *dest, const uint8_t *
         p   += chunk;
         sent += chunk;
 
-        sendto(sock, s_pkt, p - s_pkt, 0, (struct sockaddr *)dest, sizeof(*dest));
+        udp_send(sock, dest, s_pkt, p - s_pkt);
     }
 }
 
 static void drain_commands(int sock)
 {
     uint8_t cmd;
-    while (recv(sock, &cmd, 1, MSG_DONTWAIT) == 1)
+    while (udp_try_recv(sock, &cmd, 1) == 1)
         motor_cmd_send(cmd);
 }
 
 static void udp_stream_task(void *arg)
 {
-    struct sockaddr_in dest =
-    {
-        .sin_family = AF_INET,
-        .sin_port   = htons(VID_PORT),
-    };
-    inet_pton(AF_INET, S3_IP, &dest.sin_addr);
+    struct sockaddr_in dest = udp_addr(S3_IP, VID_PORT);
 
     int sock = -1;
     while (sock < 0)
     {
-        sock = open_socket();
+        sock = udp_open(CMD_PORT);
         if (sock < 0)
         {
             ESP_LOGE(TAG, "socket setup failed, retrying");

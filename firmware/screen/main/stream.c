@@ -1,4 +1,5 @@
 #include "stream.h"
+#include "udp.h"
 #include "rc_protocol.h"
 #include <inttypes.h>
 #include <string.h>
@@ -9,7 +10,6 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_heap_caps.h"
-#include "lwip/sockets.h"
 #include "lwip/inet.h"
 #include "jpeg_decoder.h"
 
@@ -26,7 +26,7 @@
 #define FRAME_BUF   (32 * 1024)
 #define MAX_FRAGS   23
 #define PKT_MAX     (4 + 5 + FRAG_SIZE)
-#define LIVENESS_US (2 * 1000 * 1000)
+#define LIVENESS_MS 2000
 
 static const char *TAG = "stream";
 
@@ -41,7 +41,7 @@ static int                s_sock = -1;
 static struct sockaddr_in s_cam_addr;
 static bool               s_cam_known;
 static SemaphoreHandle_t  s_cam_mutex;
-static volatile int64_t   s_last_rx;
+static volatile uint32_t  s_last_rx_ms;   // 32-bit so the render task reads it atomically
 
 static struct
 {
@@ -50,32 +50,6 @@ static struct
     uint64_t rx_mask;       // bit N set once fragment N has arrived
     uint32_t frame_len;
 } s_rx;
-
-static int create_udp_server(uint16_t port)
-{
-    struct sockaddr_in addr =
-    {
-        .sin_family      = AF_INET,
-        .sin_port        = htons(port),
-        .sin_addr.s_addr = INADDR_ANY,
-    };
-
-    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    if (sock < 0)
-    {
-        ESP_LOGE(TAG, "socket() failed");
-        return -1;
-    }
-    if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) != 0)
-    {
-        ESP_LOGE(TAG, "bind() failed");
-        close(sock);
-        return -1;
-    }
-    int rcvbuf = 48 * 1024;
-    setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
-    return sock;
-}
 
 static void learn_cam_addr(const struct sockaddr_in *src)
 {
@@ -95,12 +69,12 @@ void stream_send_cmd(uint8_t cmd)
     xSemaphoreGive(s_cam_mutex);
 
     if (!known || s_sock < 0) return;
-    sendto(s_sock, &cmd, 1, MSG_DONTWAIT, (struct sockaddr *)&addr, sizeof(addr));
+    udp_send(s_sock, &addr, &cmd, 1);
 }
 
 bool stream_is_connected(void)
 {
-    return (esp_timer_get_time() - s_last_rx) < LIVENESS_US;
+    return (uint32_t)(esp_timer_get_time() / 1000) - s_last_rx_ms < LIVENESS_MS;
 }
 
 static void begin_frame(uint16_t seq, uint8_t frags)
@@ -129,12 +103,13 @@ static void publish_frame(void)
 
 static void udp_server_task(void *arg)
 {
-    int sock = create_udp_server(VID_PORT);
+    int sock = udp_open(VID_PORT);
     if (sock < 0)
     {
         vTaskDelete(NULL);
         return;
     }
+    udp_set_rcvbuf(sock, 48 * 1024);
     s_sock = sock;
     ESP_LOGI(TAG, "UDP video server on port %d", VID_PORT);
 
@@ -143,8 +118,7 @@ static void udp_server_task(void *arg)
     while (1)
     {
         struct sockaddr_in src;
-        socklen_t src_len = sizeof(src);
-        int n = recvfrom(sock, pkt, sizeof(pkt), 0, (struct sockaddr *)&src, &src_len);
+        int n = udp_recv(sock, pkt, sizeof(pkt), &src);
         if (n < 4) continue;
 
         uint16_t seq;
@@ -189,8 +163,8 @@ static void udp_server_task(void *arg)
         if (s_rx.rx_mask != ((1ULL << frags) - 1)) continue;
 
         publish_frame();
-        s_rx.frags = 0;
-        s_last_rx  = esp_timer_get_time();
+        s_rx.frags   = 0;
+        s_last_rx_ms = (uint32_t)(esp_timer_get_time() / 1000);
     }
 }
 
