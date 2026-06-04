@@ -10,7 +10,7 @@ static float s_temp = 0;
 static float s_humi = 0;
 static float s_pres = 0;
 */
-static uint8_t           s_cmd       = CMD_STOP;
+static volatile uint8_t  s_cmd       = CMD_STOP;
 static volatile bool     s_connected = false;
 static volatile bool     s_ui_dirty  = false;
 

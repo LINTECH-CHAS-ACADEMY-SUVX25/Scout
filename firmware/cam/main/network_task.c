@@ -22,7 +22,7 @@ static esp_err_t send_all(int sock, const void *buf, size_t len)
     const uint8_t *p = buf;
     while (len > 0) {
         int n = send(sock, p, len, 0);
-        if (n < 0) return ESP_FAIL;
+        if (n <= 0) return ESP_FAIL;
         p += n;
         len -= n;
     }
