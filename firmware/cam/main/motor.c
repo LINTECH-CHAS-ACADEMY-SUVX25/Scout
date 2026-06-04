@@ -44,6 +44,6 @@ void motor_init(void)
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type    = GPIO_INTR_DISABLE,
     };
-    gpio_config(&cfg);
+    ESP_ERROR_CHECK(gpio_config(&cfg));
     motor_apply(CMD_STOP);
 }

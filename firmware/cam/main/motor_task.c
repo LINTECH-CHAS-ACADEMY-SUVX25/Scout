@@ -13,7 +13,8 @@ static QueueHandle_t s_queue;
 
 void motor_cmd_send(uint8_t cmd)
 {
-    xQueueSend(s_queue, &cmd, 0);
+    if (xQueueSend(s_queue, &cmd, 0) != pdTRUE)
+        ESP_LOGW(TAG, "cmd queue full, dropped 0x%02x", cmd);
 }
 
 static void motor_task(void *arg)
