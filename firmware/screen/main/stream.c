@@ -157,8 +157,6 @@ static void tcp_server_task(void *arg)
         ESP_LOGI(TAG, "[tcp] Camera connected");
 
         uint32_t frames_rx = 0, frames_dropped = 0;
-        uint32_t fps_count = 0;
-        int64_t  fps_window = esp_timer_get_time();
 
         while (1) {
             uint32_t len;
@@ -168,25 +166,17 @@ static void tcp_server_task(void *arg)
                 if (!try_store_frame(client, len)) { xSemaphoreGive(s_frame_mutex); break; }
                 xSemaphoreGive(s_frame_mutex);
                 frames_rx++;
-                fps_count++;
             } else {
                 if (!drain_frame(client, len)) break;
                 frames_dropped++;
                 ESP_LOGW(TAG, "[tcp] Frame dropped (decoder busy) — total: %"PRIu32"/%"PRIu32,
                          frames_dropped, frames_rx + frames_dropped);
             }
-
-            if (esp_timer_get_time() - fps_window >= 1000000) {
-                ui_set_fps(fps_count);
-                fps_count  = 0;
-                fps_window = esp_timer_get_time();
-            }
         }
 
         set_client_sock(-1);
         close(client);
         ui_set_connected(false);
-        ui_set_fps(0);
         ESP_LOGW(TAG, "[tcp] Camera disconnected — %"PRIu32" received, %"PRIu32" dropped",
                  frames_rx, frames_dropped);
     }
@@ -198,5 +188,5 @@ void stream_init(void)
 {
     s_frame_mutex = xSemaphoreCreateMutex();
     s_sock_mutex  = xSemaphoreCreateMutex();
-    xTaskCreate(tcp_server_task, "tcp_server", 4096, NULL, 3, NULL);
+    xTaskCreatePinnedToCore(tcp_server_task, "tcp_server", 4096, NULL, 5, NULL, 0);
 }
