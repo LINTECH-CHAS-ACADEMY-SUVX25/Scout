@@ -20,11 +20,6 @@
 // UDP has no connection, so stream_is_connected() reports liveness from how
 // recently a full frame arrived.
 
-#define FRAG_SIZE   1460
-#define FIRST_DATA  (FRAG_SIZE - 5)
-#define FRAME_BUF   (32 * 1024)
-#define MAX_FRAGS   23
-#define PKT_MAX     (4 + 5 + FRAG_SIZE)
 #define LIVENESS_MS 2000
 
 static const char *TAG = "stream";
@@ -142,7 +137,7 @@ static void udp_server_task(void *arg)
             uint32_t flen_be;
             memcpy(&flen_be, data + 1, 4);
             s_rx.frame_len = ntohl(flen_be);
-            if (s_rx.frame_len > FRAME_BUF)
+            if (s_rx.frame_len > FRAME_MAX)
             {
                 s_rx.frags = 0;
                 continue;
@@ -155,7 +150,7 @@ static void udp_server_task(void *arg)
             offset = FIRST_DATA + (uint32_t)(fi - 1) * FRAG_SIZE;
         }
 
-        if ((uint32_t)data_len > FRAME_BUF - offset) continue;
+        if ((uint32_t)data_len > FRAME_MAX - offset) continue;
         memcpy(s_asm_buf + offset, data, data_len);
         s_rx.rx_mask |= (1ULL << fi);
 
@@ -214,8 +209,8 @@ bool stream_try_decode(uint8_t *out_buf, size_t out_size)
 
 void stream_init(void)
 {
-    s_asm_buf = heap_caps_malloc(FRAME_BUF, MALLOC_CAP_SPIRAM);
-    s_dec_buf = heap_caps_malloc(FRAME_BUF, MALLOC_CAP_SPIRAM);
+    s_asm_buf = heap_caps_malloc(FRAME_MAX, MALLOC_CAP_SPIRAM);
+    s_dec_buf = heap_caps_malloc(FRAME_MAX, MALLOC_CAP_SPIRAM);
     assert(s_asm_buf && s_dec_buf);
 
     s_frame_mutex = xSemaphoreCreateMutex();

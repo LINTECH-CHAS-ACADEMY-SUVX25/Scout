@@ -13,10 +13,6 @@
 // Fragment 0's payload is prefixed with [FRAME_MAGIC:1][frame_len:4] so the
 // receiver knows the full size before reassembling.
 
-#define FRAG_SIZE   1460
-#define FIRST_DATA  (FRAG_SIZE - 5)
-#define PKT_MAX     (4 + 5 + FRAG_SIZE)
-
 static const char *TAG = "udp_stream";
 
 static uint8_t s_pkt[PKT_MAX];
@@ -90,6 +86,14 @@ static void udp_stream_task(void *arg)
             ESP_LOGE(TAG, "camera capture failed");
             motor_cmd_send(CMD_STOP);
             vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
+
+        if (fb->len > FRAME_MAX)
+        {
+            ESP_LOGW(TAG, "frame too large (%u B > %u) — raise jpeg_quality or lower frame_size",
+                     (unsigned)fb->len, FRAME_MAX);
+            esp_camera_fb_return(fb);
             continue;
         }
 
