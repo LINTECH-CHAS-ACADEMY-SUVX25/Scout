@@ -5,6 +5,7 @@
 #include "ui.h"
 #include "stream.h"
 #include "render.h"
+#include "monitor.h"
 #include "esp_log.h"
 
 static const char *TAG = "screen";
@@ -15,6 +16,7 @@ void app_main(void)
     display_init();
     ui_init();
     ESP_LOGI(TAG, "UI initialized");
+    monitor_init();
     stream_init();
     ESP_LOGI(TAG, "Stream task started");
     render_init();

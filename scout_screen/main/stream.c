@@ -37,6 +37,11 @@ static bool               s_cam_known;
 static SemaphoreHandle_t  s_cam_mutex;
 static volatile uint32_t  s_last_rx_ms;   // 32-bit so the render task reads it atomically
 
+static volatile uint32_t s_frame_count      = 0;
+static volatile uint32_t s_last_frame_bytes = 0;
+static volatile int32_t  s_last_transfer_ms = 0;
+static volatile int32_t  s_last_decode_ms   = 0;
+
 static struct
 {
     uint16_t seq;
@@ -162,6 +167,8 @@ static void udp_server_task(void *arg)
 
         int64_t transfer_ms = (esp_timer_get_time() - transfer_t) / 1000;
         ESP_LOGI(TAG, "[udp] %"PRIu32" bytes in %"PRId64"ms", s_rx.frame_len, transfer_ms);
+        s_last_frame_bytes = s_rx.frame_len;
+        s_last_transfer_ms = (int32_t)transfer_ms;
         publish_frame();
         s_rx.frags   = 0;
         s_last_rx_ms = (uint32_t)(esp_timer_get_time() / 1000);
@@ -194,9 +201,19 @@ bool stream_try_decode(uint8_t *out_buf, size_t out_size)
     if (!ok) return false;
     ESP_LOGI(TAG, "decoded %"PRIu16"x%"PRIu16" in %"PRId64"ms (%"PRIu32" bytes)",
              w, h, decode_ms, len);
+    s_last_decode_ms = (int32_t)decode_ms;
+    s_frame_count++;
     return true;
 }
 
+
+void stream_get_stats(stream_stats_t *out)
+{
+    out->frame_count      = s_frame_count;
+    out->last_frame_bytes = s_last_frame_bytes;
+    out->last_transfer_ms = s_last_transfer_ms;
+    out->last_decode_ms   = s_last_decode_ms;
+}
 
 void stream_init(void)
 {
