@@ -48,7 +48,6 @@ Scout/
         main/
         components/ <- screen komponenter
             jpeg_decode/
-            lvgl__lvgl/ <- ha lvgl trackat i git pga egna ändringar
             lvgl_port/
             etc...
     test/
@@ -76,11 +75,10 @@ video_streamen fyller inte rutan lvgl ritar upp just nu
 ### Samla ihop defines på ett enkelt sätt
 rc_protokoll finns ju redan men snackar om t.ex. "#define CAM_X ((SCREEN_W - CAM_W) / 2)" som ligger i render.c
 
-### Ändra config utan flash
-Undersök om man kan ändra vissa inställningar typ camera_config_t->.frame_size .jpeg_quality utan att behöva flasha igen
-
 # Låg prio:
 Protokoll för kommentarer 
 många funktioner har inga kommentarer där dom borde ha
 en del kommentarer är på engelska, en del svenska
 
+### Ändra config utan flash
+Undersök om man kan ändra vissa inställningar typ camera_config_t->.frame_size .jpeg_quality utan att behöva flasha igen
