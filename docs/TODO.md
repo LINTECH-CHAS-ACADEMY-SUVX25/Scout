@@ -3,7 +3,7 @@ OPTIMERA OPTIMERA OPTIMERA OPTIMERA OPTIMERA OPTIMERA OPTIMERA OPTIMERA OPTIMERA
 # Hög prio:
 
 ### Kolla vad som saknas enligt kurskraven
-UART I2C med mera
+I2C
 
 ### Simplifiera flödet - rensa ur svårlästa hårdkodade funktioner ur programmets "flowchart"
     scout_screen:main->wifi->display->ui->stream->render
