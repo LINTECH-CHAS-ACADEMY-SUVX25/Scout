@@ -124,8 +124,12 @@ static void udp_server_task(void *arg)
 
         if (!s_cam_known) learn_cam_addr(&src);
 
+        static int64_t transfer_t = 0;
         if (s_rx.frags == 0 || seq != s_rx.seq || frags != s_rx.frags)
+        {
             begin_frame(seq, frags);
+            transfer_t = esp_timer_get_time();
+        }
 
         const uint8_t *data = pkt + 4;
         int            data_len = n - 4;
@@ -156,6 +160,8 @@ static void udp_server_task(void *arg)
 
         if (s_rx.rx_mask != ((1ULL << frags) - 1)) continue;
 
+        int64_t transfer_ms = (esp_timer_get_time() - transfer_t) / 1000;
+        ESP_LOGI(TAG, "[udp] %"PRIu32" bytes in %"PRId64"ms", s_rx.frame_len, transfer_ms);
         publish_frame();
         s_rx.frags   = 0;
         s_last_rx_ms = (uint32_t)(esp_timer_get_time() / 1000);
