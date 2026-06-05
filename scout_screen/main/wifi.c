@@ -32,11 +32,6 @@ void wifi_ap_start(void)
             .password       = AP_PASS,
             .max_connection = 1,
             .authmode       = WIFI_AUTH_WPA2_PSK,
-            .pmf_cfg =
-            {
-                .capable  = false,
-                .required = false,
-            },
         },
     };
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
