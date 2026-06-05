@@ -78,7 +78,7 @@ static void clear_camera_area(void)
 static void render_task(void *arg)
 {
     (void)arg;
-    uint8_t last_cmd      = 0xFF; // This is probably why scout_cam drives both motors backwards when establishing a connection. Change to 0x00 maybe
+    uint8_t last_cmd      = CMD_STOP;
     bool    was_connected = false;
 
     while (1) {

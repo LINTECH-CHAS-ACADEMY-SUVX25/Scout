@@ -43,3 +43,9 @@ had around 2fps
 
 After improvements steady 33fps in lvgl
 video stream estimated 30fps
+
+
+
+------------------------------------
+Time values above this line were true when frame_size=240x176
+We've since changed to 640x480 and might change again.
