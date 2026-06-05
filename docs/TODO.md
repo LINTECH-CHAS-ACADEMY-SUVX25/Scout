@@ -41,7 +41,7 @@ Scout/
         components/ <- cam komponenter
             camera/
             motor_driver/
-            etc
+            etc...
     scout_screen/
         CMakeLists.txt
         sdkconfig.defaults
@@ -50,6 +50,7 @@ Scout/
             jpeg_decode/
             lvgl__lvgl/ <- ha lvgl trackat i git pga egna ändringar
             lvgl_port/
+            etc...
     test/
     docs/
         architecture.md
