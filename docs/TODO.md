@@ -24,38 +24,6 @@ tyvärr är nästa mindre "officiela" storleken CIF=352x288 ganska mycket mindre
 jag gillar höjden 480px men bredden känns lite för lång. Vi borde kunna "skära av" 80px
 höger och vänster om bredden 640px så skickar vi en custom res på 480x480 istället
 
-### Filstruktur
-Det är rörigt med alla filer som ligger direkt i main mappen
-Såhär vill jag ha det:
-Scout/
-    README.md
-    LICENSE
-    CHANGELOG.md
-    shared_components/ <- delade komponenter
-        udp/
-        rc_protocol/
-    scout_cam/
-        CMakeLists.txt
-        sdkconfig.defaults
-        main/
-        components/ <- cam komponenter
-            camera/
-            motor_driver/
-            etc...
-    scout_screen/
-        CMakeLists.txt
-        sdkconfig.defaults
-        main/
-        components/ <- screen komponenter
-            jpeg_decode/
-            lvgl_port/
-            etc...
-    test/
-    docs/
-        architecture.md
-        protocols/
-        diagrams/
-        hardware/
 
 # Mid prio:
 ### Protokoll för logging 
