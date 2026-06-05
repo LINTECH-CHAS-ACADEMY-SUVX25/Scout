@@ -7,20 +7,19 @@
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "lwip/sockets.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 
 static const char *TAG = "render";
 
-#define CAM_W    240
-#define CAM_H    176
+#define CAM_W    640
+#define CAM_H    480
 #define SCREEN_W 1024
 #define SCREEN_H 600
 #define CAM_X    ((SCREEN_W - CAM_W) / 2)
 #define CAM_Y    ((SCREEN_H - CAM_H) / 2)
 
-static uint16_t s_canvas_buf[CAM_W * CAM_H];
+static uint16_t *s_canvas_buf;
 static bool     s_has_frame = false;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -40,14 +39,12 @@ static const char *cmd_str(uint8_t c)
 
 static void send_rc_command(uint8_t *last_cmd)
 {
-    int sock = stream_get_client_sock();
-    if (sock < 0) return;
     uint8_t c = ui_get_cmd();
     if (c != *last_cmd) {
         ESP_LOGI(TAG, "[render] RC cmd: %s (0x%02x)", cmd_str(c), c);
         *last_cmd = c;
     }
-    send(sock, &c, 1, MSG_DONTWAIT);
+    stream_send_cmd(c);
 }
 
 static void blit_camera_frame(void)
@@ -62,7 +59,7 @@ static void blit_camera_frame(void)
 
 static void try_decode_frame(void)
 {
-    if (stream_try_decode((uint8_t *)s_canvas_buf, sizeof(s_canvas_buf)))
+    if (stream_try_decode((uint8_t *)s_canvas_buf, CAM_W * CAM_H * sizeof(uint16_t)))
         s_has_frame = true;
     if (s_has_frame)
         blit_camera_frame();
@@ -81,13 +78,16 @@ static void clear_camera_area(void)
 static void render_task(void *arg)
 {
     (void)arg;
-    uint8_t last_cmd      = 0xFF; // This is probably why scout_cam drives both motors backwards when establishing a connection. Change to 0x00 maybe
+    uint8_t last_cmd      = CMD_STOP;
     bool    was_connected = false;
 
     while (1) {
-        bool connected = (stream_get_client_sock() >= 0);
-        if (was_connected && !connected)
-            clear_camera_area();
+        bool connected = stream_is_connected();
+        if (connected != was_connected) {
+            ui_set_connected(connected);
+            if (!connected)
+                clear_camera_area();
+        }
         was_connected = connected;
 
         ui_tick();
@@ -108,5 +108,7 @@ static void render_task(void *arg)
 
 void render_init(void)
 {
+    s_canvas_buf = heap_caps_aligned_alloc(16, CAM_W * CAM_H * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+    assert(s_canvas_buf);
     xTaskCreatePinnedToCore(render_task, "render", 8192, NULL, 4, NULL, 1);
 }

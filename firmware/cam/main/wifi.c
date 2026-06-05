@@ -15,12 +15,15 @@ static EventGroupHandle_t s_wifi_events;
 
 static void on_wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
-    if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
+    if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START)
+    {
         esp_wifi_connect();
-    } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
+    } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED)
+    {
         ESP_LOGW(TAG, "Disconnected — retrying");
         esp_wifi_connect();
-    } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
+    } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP)
+    {
         ip_event_got_ip_t *e = data;
         ESP_LOGI(TAG, "Got IP: " IPSTR, IP2STR(&e->ip_info.ip));
         xEventGroupSetBits(s_wifi_events, CONNECTED_BIT);
@@ -33,7 +36,8 @@ void wifi_connect(void)
     s_wifi_events = xEventGroupCreate();
 
     esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
+    {
         ESP_ERROR_CHECK(nvs_flash_erase());
         ret = nvs_flash_init();
     }
@@ -49,8 +53,13 @@ void wifi_connect(void)
     ESP_ERROR_CHECK(esp_event_handler_instance_register(
         IP_EVENT, IP_EVENT_STA_GOT_IP, on_wifi_event, NULL, NULL));
 
-    wifi_config_t wifi_cfg = {
-        .sta = { .ssid = AP_SSID, .password = AP_PASS },
+    wifi_config_t wifi_cfg =
+    {
+        .sta =
+        {
+            .ssid     = AP_SSID,
+            .password = AP_PASS,
+        },
     };
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg));

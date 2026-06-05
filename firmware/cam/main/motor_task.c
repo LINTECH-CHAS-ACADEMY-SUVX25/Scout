@@ -22,6 +22,7 @@ static void motor_task(void *arg)
     uint8_t cmd;
     bool moving = false;
     esp_task_wdt_add(NULL);
+    motor_apply(CMD_STOP);
 
     while (1)
     {
