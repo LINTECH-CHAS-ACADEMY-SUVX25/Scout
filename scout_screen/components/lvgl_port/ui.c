@@ -76,12 +76,3 @@ void ui_intro_screen(void)
     lvgl_port_intro_screen();
 }
 
-void ui_canvas_init(uint8_t *buf, int w, int h)
-{
-    s_canvas = lvgl_port_create_video_canvas(buf, w, h);
-}
-
-void ui_canvas_invalidate(void)
-{
-    lvgl_port_canvas_invalidate(s_canvas);
-}
