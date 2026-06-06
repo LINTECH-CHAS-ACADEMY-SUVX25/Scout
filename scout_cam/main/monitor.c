@@ -4,11 +4,11 @@
 #include "rc_protocol.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "driver/uart.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_heap_caps.h"
 #include "esp_wifi.h"
+#include "esp_driver_uart.h"
 #include <stdarg.h>
 #include <string.h>
 #include <stdio.h>
@@ -57,6 +57,21 @@ static void decode_motors(uint8_t cmd, const char **left, const char **right)
     else                { *left = "stop"; *right = "stop";  }
 }
 
+static void cmd_status(void)
+{
+    uint32_t uptime_s = (uint32_t)(esp_timer_get_time() / 1000000);
+    wifi_ap_record_t ap = {0};
+    bool wifi_ok = (esp_wifi_sta_get_ap_info(&ap) == ESP_OK);
+    uint8_t last_cmd = motor_task_get_last_cmd();
+
+    uart_println("--- STATUS ---");
+    uart_printfln("uptime       %lus", (unsigned long)uptime_s);
+    uart_printfln("free heap    %luB", (unsigned long)esp_get_free_heap_size());
+    uart_printfln("free PSRAM   %luB", (unsigned long)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    uart_printfln("WiFi         %s",   wifi_ok ? "connected" : "disconnected");
+    uart_printfln("motors       %s",   last_cmd == CMD_STOP ? "stopped" : "moving");
+}
+
 static void cmd_motor(void)
 {
     uint8_t cmd = motor_task_get_last_cmd();
@@ -87,37 +102,6 @@ static void cmd_sensor(void)
     }
     uart_printfln("frames sent  %lu",  (unsigned long)stats.frames_sent);
     uart_printfln("last frame   %luB", (unsigned long)stats.last_frame_bytes);
-}
-
-static void cmd_config(const char *args)
-{
-    uart_println("--- CONFIG ---");
-    if(strlen(args) == 0) {
-        uart_println("usage: CONFIG <param> <value>");
-        uart_println("no configurable params yet");
-    } else {
-        uart_printfln("unknown param: %s", args);
-    }
-}
-
-static void cmd_diag(void)
-{
-    uart_println("--- DIAG ---");
-    uart_printfln("tasks        %lu",  (unsigned long)uxTaskGetNumberOfTasks());
-    uart_printfln("min heap     %luB", (unsigned long)esp_get_minimum_free_heap_size());
-    uart_printfln("free int     %luB", (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-    uart_printfln("free PSRAM   %luB", (unsigned long)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-}
-
-static void cmd_help(void)
-{
-    uart_println("commands:");
-    uart_println("  STATUS          uptime, heap, WiFi, motor state");
-    uart_println("  MOTOR           direction per motor");
-    uart_println("  SENSOR          WiFi RSSI, frames sent");
-    uart_println("  CONFIG <p> <v>  change config param");
-    uart_println("  DIAG            heap watermarks, task count");
-    uart_println("  HELP            this list");
 }
 
 static void cmd_config(const char *args)
@@ -213,19 +197,4 @@ void monitor_init(void)
     }
     xTaskCreate(monitor_task, "monitor", 3072, NULL, 2, NULL);
     ESP_LOGI(TAG, "monitor ready on UART0");
-}
-
-static void cmd_status(void)
-{
-    uint32_t uptime_s = (uint32_t)(esp_timer_get_time() / 1000000);
-    wifi_ap_record_t ap = {0};
-    bool wifi_ok = (esp_wifi_sta_get_ap_info(&ap) == ESP_OK);
-    uint8_t last_cmd = motor_task_get_last_cmd();
-
-    uart_println("--- STATUS ---");
-    uart_printfln("uptime       %lus",  (unsigned long)uptime_s);
-    uart_printfln("free heap    %luB",  (unsigned long)esp_get_free_heap_size());
-    uart_printfln("free PSRAM   %luB",  (unsigned long)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-    uart_printfln("WiFi         %s",    wifi_ok ? "connected" : "disconnected");
-    uart_printfln("motors       %s",    last_cmd == CMD_STOP ? "stopped" : "moving");
 }
