@@ -15,7 +15,9 @@
 
 static const char *TAG = "udp_stream";
 
-static uint8_t s_pkt[PKT_MAX];
+static uint8_t   s_pkt[PKT_MAX];
+static uint32_t  s_frames_sent      = 0;
+static uint32_t  s_last_frame_bytes = 0;
 
 static void send_frame(int sock, const struct sockaddr_in *dest, const uint8_t *buf, uint32_t len, uint16_t seq)
 {
@@ -100,10 +102,18 @@ static void udp_stream_task(void *arg)
         }
 
         send_frame(sock, &dest, fb->buf, fb->len, seq++);
+        s_frames_sent++;
+        s_last_frame_bytes = fb->len;
         esp_camera_fb_return(fb);
 
         drain_commands(sock);
     }
+}
+
+void udp_stream_get_stats(udp_stream_stats_t *out)
+{
+    out->frames_sent      = s_frames_sent;
+    out->last_frame_bytes = s_last_frame_bytes;
 }
 
 void udp_stream_start(void)
