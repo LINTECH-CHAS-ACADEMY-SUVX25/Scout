@@ -9,10 +9,6 @@ managed_components/
 # Scout simulator build output
 scout-sim/build/
 
-# AI tooling
-CLAUDE.md
-.claude/
-
 # IDE / editor
 .vscode/
 *.swp

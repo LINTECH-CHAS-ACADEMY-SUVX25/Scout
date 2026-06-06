@@ -26,11 +26,11 @@ jobs:
             --error-exitcode=1 \
             --suppress=missingIncludeSystem \
             --inline-suppr \
-            firmware/cam/main \
-            firmware/screen/main
+            scout_cam/main \
+            scout_screen/main
 
   build-cam:
-    name: firmware/cam (esp32)
+    name: scout_cam (esp32)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -53,11 +53,11 @@ jobs:
       - name: Build
         run: |
           . ~/esp-idf/export.sh
-          cd firmware/cam
+          cd scout_cam
           idf.py build
 
   build-screen:
-    name: firmware/screen (esp32s3)
+    name: scout_screen (esp32s3)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -80,5 +80,5 @@ jobs:
       - name: Build
         run: |
           . ~/esp-idf/export.sh
-          cd firmware/screen
+          cd scout_screen
           idf.py build
