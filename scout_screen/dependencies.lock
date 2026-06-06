@@ -1,6 +1,6 @@
 dependencies:
   espressif/esp_new_jpeg:
-    component_hash: 98823384f51ca298e2c9bebacd1c629148e528ed0902d18b16556df151519e68
+    component_hash: e1e7e6991193c41ed6c9fc386702aa7821433319e7aa9c3147cd3236310cd69c
     dependencies: []
     source:
       registry_url: https://components.espressif.com/
@@ -17,7 +17,7 @@ dependencies:
     - esp32c6
     - esp32c61
     - esp32h4
-    version: 1.0.1
+    version: 1.0.2
   idf:
     source:
       type: idf

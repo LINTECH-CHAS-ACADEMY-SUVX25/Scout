@@ -1,6 +1,6 @@
 #include "stream.h"
 #include "udp.h"
-#include "jpeg_decode.h"
+#include "jpeg.h"
 #include "rc_protocol.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"

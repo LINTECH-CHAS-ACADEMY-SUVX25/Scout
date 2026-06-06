@@ -1,11 +1,11 @@
 #include "udp_stream.h"
+#include "camera.h"
 #include "motor_task.h"
 #include "udp.h"
 #include "rc_protocol.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
-#include "esp_camera.h"
 #include "esp_task_wdt.h"
 #include <string.h>
 
@@ -77,23 +77,24 @@ static void udp_stream_task(void *arg)
     while(1) {
         esp_task_wdt_reset();
 
-        camera_fb_t *fb = esp_camera_fb_get();
-        if(!fb) {
+        const uint8_t *buf;
+        size_t len;
+        if(!camera_capture(&buf, &len)) {
             ESP_LOGE(TAG, "camera capture failed");
             motor_cmd_send(CMD_STOP);
             vTaskDelay(pdMS_TO_TICKS(100));
             continue;
         }
 
-        if(fb->len > FRAME_MAX) {
+        if(len > FRAME_MAX) {
             ESP_LOGW(TAG, "frame too large (%u B > %u) — lower jpeg_quality or frame_size",
-                     (unsigned)fb->len, FRAME_MAX);
-            esp_camera_fb_return(fb);
+                     (unsigned)len, FRAME_MAX);
+            camera_release();
             continue;
         }
 
-        send_frame(sock, &dest, fb->buf, fb->len, seq++);
-        esp_camera_fb_return(fb);
+        send_frame(sock, &dest, buf, (uint32_t)len, seq++);
+        camera_release();
         drain_commands(sock);
     }
 }

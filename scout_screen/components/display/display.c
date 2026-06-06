@@ -2,15 +2,26 @@
 #include "gt911.h"
 #include "rgb_lcd_port.h"
 #include "esp_lcd_panel_rgb.h"
+#include "esp_lcd_panel_ops.h"
 
 static esp_lcd_panel_handle_t s_panel;
 static void                  *s_fb[2];
 static esp_lcd_touch_handle_t s_touch;
 
-void *display_get_panel(void) { return s_panel; }
-void *display_get_touch(void) { return s_touch; }
 void *display_get_fb(int i)   { return s_fb[i]; }
 void display_refresh(void)    { esp_lcd_rgb_panel_refresh(s_panel); }
+
+void display_draw_bitmap(int x1, int y1, int x2, int y2, const void *pixels)
+{
+    esp_lcd_panel_draw_bitmap(s_panel, x1, y1, x2, y2, pixels);
+}
+
+bool display_read_touch(uint16_t *x, uint16_t *y)
+{
+    uint8_t cnt = 0;
+    esp_lcd_touch_read_data(s_touch);
+    return esp_lcd_touch_get_coordinates(s_touch, x, y, NULL, &cnt, 1);
+}
 
 void display_init(void)
 {

@@ -4,8 +4,6 @@
 #include "rc_protocol.h"
 #include "lvgl.h"
 #include "rgb_lcd_port.h"
-#include "gt911.h"
-#include "esp_lcd_panel_ops.h"
 #include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -35,19 +33,14 @@ static lv_obj_t *s_val_cmd_hex;
 
 static void flush_cb(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color_p)
 {
-    esp_lcd_panel_draw_bitmap(display_get_panel(),
-                              area->x1, area->y1, area->x2 + 1, area->y2 + 1,
-                              color_p);
+    display_draw_bitmap(area->x1, area->y1, area->x2 + 1, area->y2 + 1, color_p);
     lv_disp_flush_ready(drv);
 }
 
 static void touch_read_cb(lv_indev_drv_t *drv, lv_indev_data_t *data)
 {
     uint16_t x, y;
-    uint8_t  cnt = 0;
-    esp_lcd_touch_handle_t touch = display_get_touch();
-    esp_lcd_touch_read_data(touch);
-    bool touched = esp_lcd_touch_get_coordinates(touch, &x, &y, NULL, &cnt, 1);
+    bool touched = display_read_touch(&x, &y);
     data->point.x = x;
     data->point.y = y;
     data->state   = touched ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;

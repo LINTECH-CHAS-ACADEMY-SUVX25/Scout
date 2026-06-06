@@ -1,8 +1,9 @@
-#include "jpeg_decode.h"
+#include "jpeg.h"
 #include "esp_log.h"
 #include "esp_jpeg_dec.h"
+#include "esp_jpeg_enc.h"
 
-static const char *TAG = "jpeg_decode";
+static const char *TAG = "jpeg";
 
 bool jpeg_decode_rgb565(const uint8_t *inbuf, int inbuf_len,
                         uint8_t *outbuf, size_t outbuf_size,
@@ -14,7 +15,7 @@ bool jpeg_decode_rgb565(const uint8_t *inbuf, int inbuf_len,
     jpeg_dec_handle_t dec = NULL;
     jpeg_error_t ret = jpeg_dec_open(&cfg, &dec);
     if(ret != JPEG_ERR_OK) {
-        ESP_LOGE(TAG, "open failed: %d", ret);
+        ESP_LOGE(TAG, "dec open failed: %d", ret);
         return false;
     }
 
@@ -49,5 +50,37 @@ bool jpeg_decode_rgb565(const uint8_t *inbuf, int inbuf_len,
 
 done:
     jpeg_dec_close(dec);
+    return ret == JPEG_ERR_OK;
+}
+
+bool jpeg_encode_rgb565(const uint8_t *inbuf, uint16_t width, uint16_t height,
+                        uint8_t *outbuf, size_t outbuf_size, size_t *out_len,
+                        int quality)
+{
+    jpeg_enc_config_t cfg = DEFAULT_JPEG_ENC_CONFIG();
+    cfg.width    = width;
+    cfg.height   = height;
+    cfg.src_type = JPEG_PIXEL_FORMAT_RGB565_LE;
+    cfg.quality  = quality;
+
+    jpeg_enc_handle_t enc = NULL;
+    jpeg_error_t ret = jpeg_enc_open(&cfg, &enc);
+    if(ret != JPEG_ERR_OK) {
+        ESP_LOGE(TAG, "enc open failed: %d", ret);
+        return false;
+    }
+
+    int out_size = 0;
+    ret = jpeg_enc_process(enc, inbuf, (int)(width * height * 2),
+                           outbuf, (int)outbuf_size, &out_size);
+    if(ret != JPEG_ERR_OK) {
+        ESP_LOGE(TAG, "encode failed: %d", ret);
+        goto done;
+    }
+
+    if(out_len) *out_len = (size_t)out_size;
+
+done:
+    jpeg_enc_close(enc);
     return ret == JPEG_ERR_OK;
 }
