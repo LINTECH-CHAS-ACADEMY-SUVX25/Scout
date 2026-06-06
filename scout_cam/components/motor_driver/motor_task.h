@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
 
-void motor_task_start(void);
-void motor_cmd_send(uint8_t cmd);
+void    motor_task_start(void);
+void    motor_cmd_send(uint8_t cmd);
+uint8_t motor_task_get_last_cmd(void);

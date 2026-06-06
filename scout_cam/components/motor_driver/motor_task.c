@@ -10,6 +10,7 @@
 static const char *TAG = "motor";
 
 static QueueHandle_t s_queue;
+static uint8_t       s_last_cmd = CMD_STOP;
 
 void motor_cmd_send(uint8_t cmd)
 {
@@ -29,6 +30,7 @@ static void motor_task(void *arg)
         if (xQueueReceive(s_queue, &cmd, pdMS_TO_TICKS(500)) == pdTRUE)
         {
             motor_apply(cmd);
+            s_last_cmd = cmd;
             moving = (cmd != CMD_STOP);
         } else if (moving)
         {
@@ -38,6 +40,11 @@ static void motor_task(void *arg)
         }
         esp_task_wdt_reset();
     }
+}
+
+uint8_t motor_task_get_last_cmd(void)
+{
+    return s_last_cmd;
 }
 
 void motor_task_start(void)
