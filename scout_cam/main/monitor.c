@@ -8,7 +8,7 @@
 #include "esp_timer.h"
 #include "esp_heap_caps.h"
 #include "esp_wifi.h"
-#include "esp_driver_uart.h"
+#include "driver_uart.h"
 #include <stdarg.h>
 #include <string.h>
 #include <stdio.h>
@@ -38,23 +38,67 @@ static void uart_printfln(const char *fmt, ...)
 
 static void decode_motors(uint8_t cmd, const char **left, const char **right)
 {
-    bool fwd = (cmd & CMD_FORWARD)  != 0;
+    bool fwd = (cmd & CMD_FORWARD) != 0;
     bool bwd = (cmd & CMD_BACKWARD) != 0;
-    bool lft = (cmd & CMD_LEFT)     != 0;
-    bool rgt = (cmd & CMD_RIGHT)    != 0;
+    bool lft = (cmd & CMD_LEFT) != 0;
+    bool rgt = (cmd & CMD_RIGHT) != 0;
 
-    if(fwd && bwd) { fwd = false; bwd = false; }
-    if(lft && rgt) { lft = false; rgt = false; }
+    if (fwd && bwd)
+    {
+        fwd = false;
+        bwd = false;
+    }
+    if (lft && rgt)
+    {
+        lft = false;
+        rgt = false;
+    }
 
-    if(fwd && lft)      { *left = "fwd";  *right = "stop"; }
-    else if(fwd && rgt) { *left = "stop"; *right = "fwd";  }
-    else if(bwd && lft) { *left = "bwd";  *right = "stop"; }
-    else if(bwd && rgt) { *left = "stop"; *right = "bwd";  }
-    else if(fwd)        { *left = "fwd";  *right = "fwd";  }
-    else if(bwd)        { *left = "bwd";  *right = "bwd";  }
-    else if(lft)        { *left = "fwd";  *right = "bwd";  }
-    else if(rgt)        { *left = "bwd";  *right = "fwd";  }
-    else                { *left = "stop"; *right = "stop";  }
+    if (fwd && lft)
+    {
+        *left = "fwd";
+        *right = "stop";
+    }
+    else if (fwd && rgt)
+    {
+        *left = "stop";
+        *right = "fwd";
+    }
+    else if (bwd && lft)
+    {
+        *left = "bwd";
+        *right = "stop";
+    }
+    else if (bwd && rgt)
+    {
+        *left = "stop";
+        *right = "bwd";
+    }
+    else if (fwd)
+    {
+        *left = "fwd";
+        *right = "fwd";
+    }
+    else if (bwd)
+    {
+        *left = "bwd";
+        *right = "bwd";
+    }
+    else if (lft)
+    {
+        *left = "fwd";
+        *right = "bwd";
+    }
+    else if (rgt)
+    {
+        *left = "bwd";
+        *right = "fwd";
+    }
+    else
+    {
+        *left = "stop";
+        *right = "stop";
+    }
 }
 
 static void cmd_status(void)
@@ -68,8 +112,8 @@ static void cmd_status(void)
     uart_printfln("uptime       %lus", (unsigned long)uptime_s);
     uart_printfln("free heap    %luB", (unsigned long)esp_get_free_heap_size());
     uart_printfln("free PSRAM   %luB", (unsigned long)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-    uart_printfln("WiFi         %s",   wifi_ok ? "connected" : "disconnected");
-    uart_printfln("motors       %s",   last_cmd == CMD_STOP ? "stopped" : "moving");
+    uart_printfln("WiFi         %s", wifi_ok ? "connected" : "disconnected");
+    uart_printfln("motors       %s", last_cmd == CMD_STOP ? "stopped" : "moving");
 }
 
 static void cmd_motor(void)
@@ -94,23 +138,29 @@ static void cmd_sensor(void)
     udp_stream_get_stats(&stats);
 
     uart_println("--- SENSOR ---");
-    if(wifi_ok) {
+    if (wifi_ok)
+    {
         uart_printfln("RSSI         %ddBm", ap.rssi);
-        uart_printfln("WiFi ch      %d",    ap.primary);
-    } else {
+        uart_printfln("WiFi ch      %d", ap.primary);
+    }
+    else
+    {
         uart_println("RSSI         n/a (not connected)");
     }
-    uart_printfln("frames sent  %lu",  (unsigned long)stats.frames_sent);
+    uart_printfln("frames sent  %lu", (unsigned long)stats.frames_sent);
     uart_printfln("last frame   %luB", (unsigned long)stats.last_frame_bytes);
 }
 
 static void cmd_config(const char *args)
 {
     uart_println("--- CONFIG ---");
-    if(strlen(args) == 0) {
+    if (strlen(args) == 0)
+    {
         uart_println("usage: CONFIG <param> <value>");
         uart_println("no configurable params yet");
-    } else {
+    }
+    else
+    {
         uart_printfln("unknown param: %s", args);
     }
 }
@@ -118,7 +168,7 @@ static void cmd_config(const char *args)
 static void cmd_diag(void)
 {
     uart_println("--- DIAG ---");
-    uart_printfln("tasks        %lu",  (unsigned long)uxTaskGetNumberOfTasks());
+    uart_printfln("tasks        %lu", (unsigned long)uxTaskGetNumberOfTasks());
     uart_printfln("min heap     %luB", (unsigned long)esp_get_minimum_free_heap_size());
     uart_printfln("free int     %luB", (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     uart_printfln("free PSRAM   %luB", (unsigned long)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
@@ -138,21 +188,31 @@ static void cmd_help(void)
 static void handle_command(char *line)
 {
     int len = (int)strlen(line);
-    while(len > 0 && (line[len - 1] == ' ' || line[len - 1] == '\t'))
+    while (len > 0 && (line[len - 1] == ' ' || line[len - 1] == '\t'))
         line[--len] = '\0';
 
-    if(len == 0) return;
+    if (len == 0)
+        return;
 
-    if     (strcmp(line, "STATUS") == 0) cmd_status();
-    else if(strcmp(line, "MOTOR")  == 0) cmd_motor();
-    else if(strcmp(line, "SENSOR") == 0) cmd_sensor();
-    else if(strcmp(line, "DIAG")   == 0) cmd_diag();
-    else if(strcmp(line, "HELP")   == 0) cmd_help();
-    else if(strncmp(line, "CONFIG", 6) == 0) {
+    if (strcmp(line, "STATUS") == 0)
+        cmd_status();
+    else if (strcmp(line, "MOTOR") == 0)
+        cmd_motor();
+    else if (strcmp(line, "SENSOR") == 0)
+        cmd_sensor();
+    else if (strcmp(line, "DIAG") == 0)
+        cmd_diag();
+    else if (strcmp(line, "HELP") == 0)
+        cmd_help();
+    else if (strncmp(line, "CONFIG", 6) == 0)
+    {
         const char *args = line + 6;
-        while(*args == ' ') args++;
+        while (*args == ' ')
+            args++;
         cmd_config(args);
-    } else {
+    }
+    else
+    {
         uart_printfln("unknown command '%s' — try HELP", line);
     }
 }
@@ -164,24 +224,32 @@ static void monitor_task(void *arg)
 
     uart_println("\r\nScout CAM monitor — type HELP");
 
-    while(1) {
+    while (1)
+    {
         uint8_t ch;
-        if(uart_read_bytes(UART_NUM_0, &ch, 1, pdMS_TO_TICKS(20)) <= 0)
+        if (uart_read_bytes(UART_NUM_0, &ch, 1, pdMS_TO_TICKS(20)) <= 0)
             continue;
 
-        if(ch == '\r' || ch == '\n') {
-            if(pos > 0) {
+        if (ch == '\r' || ch == '\n')
+        {
+            if (pos > 0)
+            {
                 line[pos] = '\0';
                 uart_println("");
                 handle_command(line);
                 pos = 0;
             }
-        } else if(ch == 0x7F || ch == 0x08) {
-            if(pos > 0) {
+        }
+        else if (ch == 0x7F || ch == 0x08)
+        {
+            if (pos > 0)
+            {
                 pos--;
                 uart_puts("\b \b");
             }
-        } else if(pos < (int)sizeof(line) - 1) {
+        }
+        else if (pos < (int)sizeof(line) - 1)
+        {
             line[pos++] = (char)ch;
             uart_write_bytes(UART_NUM_0, &ch, 1);
         }
@@ -191,7 +259,8 @@ static void monitor_task(void *arg)
 void monitor_init(void)
 {
     esp_err_t ret = uart_driver_install(UART_NUM_0, 256, 0, 0, NULL, 0);
-    if(ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
+    if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE)
+    {
         ESP_LOGE(TAG, "uart_driver_install: %s", esp_err_to_name(ret));
         return;
     }
