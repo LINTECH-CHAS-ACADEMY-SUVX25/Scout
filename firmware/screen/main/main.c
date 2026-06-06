@@ -21,6 +21,8 @@ void app_main(void)
     ESP_LOGI(TAG, "Stream task started");
     render_init();
     ESP_LOGI(TAG, "Render task started");
+    ui_intro_screen();
+    ESP_LOGI(TAG, "Intro screen loaded");
 
     vTaskDelete(NULL);
 }
