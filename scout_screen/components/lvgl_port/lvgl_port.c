@@ -4,18 +4,21 @@
 #include "rc_protocol.h"
 #include "lvgl.h"
 #include "rgb_lcd_port.h"
+#include "gt911.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_heap_caps.h"
-#include "gt911.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdbool.h>
 
-static void lvgl_port_ui_init(void);
+// Connects LVGL to the Waveshare RGB LCD and GT911 touch controller.
+// Owns the full UI layout — widget creation, event callbacks, and rendering.
 
-// ── Widget handles ────────────────────────────────────────────────────────────
+#define JOY_RADIUS 52
+
+// Widget handles
 
 static lv_obj_t *s_knob;
 static lv_obj_t *s_halo;
@@ -28,7 +31,7 @@ static lv_obj_t *s_val_pres;
 static lv_obj_t *s_val_uptime;
 static lv_obj_t *s_val_cmd_hex;
 
-// ── LVGL driver callbacks ─────────────────────────────────────────────────────
+// LVGL driver callbacks
 
 static void flush_cb(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color_p)
 {
@@ -52,61 +55,13 @@ static void touch_read_cb(lv_indev_drv_t *drv, lv_indev_data_t *data)
 
 static void tick_task(void *arg)
 {
-    while (1) {
+    while(1) {
         lv_tick_inc(10);
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
-// ── Driver init ───────────────────────────────────────────────────────────────
-
-void lvgl_port_init(void)
-{
-    lv_init();
-
-    lv_color_t *lvgl_buf = heap_caps_malloc(
-        EXAMPLE_LCD_H_RES * 20 * sizeof(lv_color_t),
-        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    assert(lvgl_buf);
-
-    static lv_disp_draw_buf_t draw_buf;
-    lv_disp_draw_buf_init(&draw_buf, lvgl_buf, NULL, EXAMPLE_LCD_H_RES * 20);
-
-    static lv_disp_drv_t disp_drv;
-    lv_disp_drv_init(&disp_drv);
-    disp_drv.hor_res      = EXAMPLE_LCD_H_RES;
-    disp_drv.ver_res      = EXAMPLE_LCD_V_RES;
-    disp_drv.flush_cb     = flush_cb;
-    disp_drv.draw_buf     = &draw_buf;
-    disp_drv.full_refresh = 0;
-    lv_disp_drv_register(&disp_drv);
-
-    static lv_indev_drv_t indev_drv;
-    lv_indev_drv_init(&indev_drv);
-    indev_drv.type    = LV_INDEV_TYPE_POINTER;
-    indev_drv.read_cb = touch_read_cb;
-    lv_indev_drv_register(&indev_drv);
-
-    xTaskCreatePinnedToCore(tick_task, "lvgl_tick", 2048, NULL, 5, NULL, 1);
-
-    lvgl_port_ui_init();
-}
-
-// ── Render + canvas ───────────────────────────────────────────────────────────
-
-void lvgl_port_render_frame(void)
-{
-    lv_timer_t *refr = lv_disp_get_default()->refr_timer;
-
-    lv_timer_pause(refr);
-    lv_timer_handler();                     // input phase: indev fires, dirty areas accumulate
-
-    lv_timer_resume(refr);
-    lv_refr_now(lv_disp_get_default());     // render all accumulated dirty areas immediately
-}
-
-
-// ── Widget helpers ────────────────────────────────────────────────────────────
+// Widget helpers
 
 static lv_obj_t *make_obj(lv_obj_t *parent)
 {
@@ -179,14 +134,14 @@ static lv_obj_t *make_tele_row(lv_obj_t *parent, const char *key,
     return v;
 }
 
-// ── Command badges ────────────────────────────────────────────────────────────
+// Command badges
 
 static void update_cmd_badges(uint8_t cmd)
 {
     static const uint8_t masks[5] = {
         CMD_FORWARD, CMD_BACKWARD, 0xFF, CMD_LEFT, CMD_RIGHT
     };
-    for (int i = 0; i < 5; i++) {
+    for(int i = 0; i < 5; i++) {
         bool active = (i == 2) ? (cmd == CMD_STOP) : (cmd & masks[i]);
         lv_obj_set_style_bg_color(s_cmd_badges[i],
             active ? lv_color_hex(0xE8F4FF) : lv_color_hex(0xEEEEEA), 0);
@@ -194,21 +149,21 @@ static void update_cmd_badges(uint8_t cmd)
             active ? lv_color_hex(0xB5D4F4) : lv_color_hex(0xDDDDD8), 0);
 
         lv_obj_t *lbl = lv_obj_get_child(s_cmd_badges[i], 0);
-        if (lbl) {
+        if(lbl) {
             lv_obj_set_style_text_color(lbl,
                 active ? lv_color_hex(0x185FA5) : lv_color_hex(0xAAAAAA), 0);
         }
     }
 }
 
-// ── Joystick event ────────────────────────────────────────────────────────────
+// Joystick event
 
 static void joy_event(lv_event_t *e)
 {
     lv_event_code_t code = lv_event_get_code(e);
     lv_obj_t       *base = lv_event_get_target(e);
 
-    if (code == LV_EVENT_PRESSING) {
+    if(code == LV_EVENT_PRESSING) {
         lv_indev_t *indev = lv_indev_get_act();
         lv_point_t  pt;
         lv_indev_get_point(indev, &pt);
@@ -219,9 +174,9 @@ static void joy_event(lv_event_t *e)
         int dy = pt.y - (coords.y1 + coords.y2) / 2;
 
         float mag = sqrtf((float)(dx * dx + dy * dy));
-        if (mag > 52.0f) {
-            dx = (int)(dx * 52.0f / mag);
-            dy = (int)(dy * 52.0f / mag);
+        if(mag > JOY_RADIUS) {
+            dx = (int)(dx * JOY_RADIUS / mag);
+            dy = (int)(dy * JOY_RADIUS / mag);
         }
 
         lv_obj_align(s_knob, LV_ALIGN_CENTER, dx, dy);
@@ -235,7 +190,6 @@ static void joy_event(lv_event_t *e)
         char buf[8];
         snprintf(buf, sizeof(buf), "0x%02X", ui_get_cmd());
         lv_label_set_text(s_val_cmd_hex, buf);
-
     } else {
         lv_obj_align(s_knob, LV_ALIGN_CENTER, 0, 0);
         lv_obj_align(s_halo, LV_ALIGN_CENTER, 0, 0);
@@ -247,20 +201,18 @@ static void joy_event(lv_event_t *e)
     }
 }
 
-// ── UI update (called from ui_tick) ──────────────────────────────────────────
-/*
-void lvgl_port_ui_update(float temp, float humi, float pres, bool connected)
-^ Future function when cam sends sensor data
-*/
+// UI update
+
+// Future: lvgl_port_ui_update(float temp, float humi, float pres, bool connected)
+// when cam sends sensor data — also update ui.c call site
 void lvgl_port_ui_update(bool connected)
 {
     lv_obj_set_style_bg_color(s_conn_dot,
         connected ? lv_color_hex(0x4CAF50) : lv_color_hex(0xE24B4A), 0);
     lv_label_set_text(s_conn_label, connected ? "connected" : "waiting...");
-
 }
 
-// ── UI init ───────────────────────────────────────────────────────────────────
+// UI init — trivially sequential widget creation (~200 lines, accepted exception)
 
 #define XSTR(x) STR(x)
 #define STR(x)  #x
@@ -270,9 +222,9 @@ static void lvgl_port_ui_init(void)
     lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_bg_opa(lv_scr_act(), LV_OPA_COVER, 0);
 
-    // ── Topbar ───────────────────────────────────────────────────────────────
+    // Topbar
     lv_obj_t *topbar = make_obj(lv_scr_act());
-    lv_obj_set_size(topbar, 1024, 36);
+    lv_obj_set_size(topbar, SCREEN_W, 36);
     lv_obj_align(topbar, LV_ALIGN_TOP_LEFT, 0, 0);
     lv_obj_set_style_bg_color(topbar, lv_color_hex(0x111417), 0);
     lv_obj_set_style_bg_opa(topbar, LV_OPA_COVER, 0);
@@ -301,9 +253,9 @@ static void lvgl_port_ui_init(void)
     lv_obj_set_style_bg_color(s_conn_dot, lv_color_hex(0xE24B4A), 0);
     lv_obj_set_style_bg_opa(s_conn_dot, LV_OPA_COVER, 0);
 
-    // ── Bottombar ────────────────────────────────────────────────────────────
+    // Bottombar
     lv_obj_t *botbar = make_obj(lv_scr_act());
-    lv_obj_set_size(botbar, 1024, 32);
+    lv_obj_set_size(botbar, SCREEN_W, 32);
     lv_obj_align(botbar, LV_ALIGN_BOTTOM_LEFT, 0, 0);
     lv_obj_set_style_bg_color(botbar, lv_color_hex(0x111417), 0);
     lv_obj_set_style_bg_opa(botbar, LV_OPA_COVER, 0);
@@ -315,7 +267,7 @@ static void lvgl_port_ui_init(void)
     const char *bot_vals[] = { S3_IP, XSTR(VID_PORT) };
     const int32_t key_w[]  = { 24, 38 };
     int32_t bot_x = 14;
-    for (int i = 0; i < 2; i++) {
+    for(int i = 0; i < 2; i++) {
         lv_obj_t *k = make_label(botbar, bot_keys[i],
             lv_color_hex(0x444444), &lv_font_montserrat_14);
         lv_obj_align(k, LV_ALIGN_LEFT_MID, bot_x, 0);
@@ -333,12 +285,12 @@ static void lvgl_port_ui_init(void)
     lv_obj_align(rtos_v, LV_ALIGN_RIGHT_MID, -14, 0);
 
     const int32_t CONTENT_Y = 36;
-    const int32_t CONTENT_H = 600 - 36 - 32;
+    const int32_t CONTENT_H = SCREEN_H - 36 - 32;
     const int32_t LEFT_W    = 200;
     const int32_t RIGHT_W   = 160;
-    const int32_t VIDEO_W   = 1024 - LEFT_W - RIGHT_W;
+    const int32_t VIDEO_W   = SCREEN_W - LEFT_W - RIGHT_W;
 
-    // ── Left panel ───────────────────────────────────────────────────────────
+    // Left panel
     lv_obj_t *left = make_obj(lv_scr_act());
     lv_obj_set_size(left, LEFT_W, CONTENT_H);
     lv_obj_set_pos(left, 0, CONTENT_Y);
@@ -358,11 +310,11 @@ static void lvgl_port_ui_init(void)
     lv_obj_set_size(tele_cont, 172, 110);
     lv_obj_set_pos(tele_cont, 14, 28);
 
-    s_val_cmd_hex  = make_tele_row(tele_cont, "cmd",         "0x00",     lv_color_hex(0x999999),   0);
-    s_val_temp     = make_tele_row(tele_cont, "temperature", "--.- C",   lv_color_hex(0x222222),  22);
-    s_val_humi     = make_tele_row(tele_cont, "humidity",    "-- %",     lv_color_hex(0x222222),  44);
-    s_val_pres     = make_tele_row(tele_cont, "pressure",    "---- hPa", lv_color_hex(0x222222),  66);
-    s_val_uptime   = make_tele_row(tele_cont, "uptime",      "00:00:00", lv_color_hex(0x222222),  88);
+    s_val_cmd_hex = make_tele_row(tele_cont, "cmd",         "0x00",     lv_color_hex(0x999999),   0);
+    s_val_temp    = make_tele_row(tele_cont, "temperature", "--.- C",   lv_color_hex(0x222222),  22);
+    s_val_humi    = make_tele_row(tele_cont, "humidity",    "-- %",     lv_color_hex(0x222222),  44);
+    s_val_pres    = make_tele_row(tele_cont, "pressure",    "---- hPa", lv_color_hex(0x222222),  66);
+    s_val_uptime  = make_tele_row(tele_cont, "uptime",      "00:00:00", lv_color_hex(0x222222),  88);
 
     lv_obj_t *divider = make_obj(left);
     lv_obj_set_size(divider, LEFT_W, 1);
@@ -384,8 +336,8 @@ static void lvgl_port_ui_init(void)
     lv_obj_set_style_border_width(base, 2, 0);
     lv_obj_set_style_border_color(base, lv_color_hex(0x2E2E2E), 0);
     lv_obj_set_style_border_opa(base, LV_OPA_COVER, 0);
-    // NOTE: shadow removed — blurred shadow rendering into PSRAM framebuffers
-    // was stalling the LVGL render pass and tripping the task watchdog.
+    // Shadow removed — blurred shadow rendering into PSRAM framebuffers
+    // stalled the LVGL render pass and tripped the task watchdog.
     lv_obj_clear_flag(base, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(base, joy_event, LV_EVENT_PRESSING,   NULL);
     lv_obj_add_event_cb(base, joy_event, LV_EVENT_RELEASED,   NULL);
@@ -422,7 +374,7 @@ static void lvgl_port_ui_init(void)
     lv_obj_set_style_bg_color(s_knob, lv_color_hex(0x3A3A3A), 0);
     lv_obj_set_style_bg_opa(s_knob, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(s_knob, 0, 0);
-    // NOTE: shadow removed — same watchdog/stall reason as the base above.
+    // Shadow removed — same watchdog/stall reason as the base above.
     lv_obj_set_style_transform_pivot_x(s_knob, 23, 0);
     lv_obj_set_style_transform_pivot_y(s_knob, 23, 0);
     lv_obj_set_style_transform_zoom(s_knob, 256, 0);
@@ -449,7 +401,7 @@ static void lvgl_port_ui_init(void)
 
     const char *badge_labels[5] = { "FWD", "BWD", "STP", "LFT", "RGT" };
     int32_t badge_x = 6;
-    for (int i = 0; i < 5; i++) {
+    for(int i = 0; i < 5; i++) {
         lv_obj_t *badge = lv_obj_create(left);
         lv_obj_set_size(badge, 32, 18);
         lv_obj_set_pos(badge, badge_x, CONTENT_H - 38);
@@ -468,7 +420,7 @@ static void lvgl_port_ui_init(void)
     }
     update_cmd_badges(CMD_STOP);
 
-    // ── Right panel ──────────────────────────────────────────────────────────
+    // Right panel
     lv_obj_t *right = make_obj(lv_scr_act());
     lv_obj_set_size(right, RIGHT_W, CONTENT_H);
     lv_obj_set_pos(right, LEFT_W + VIDEO_W, CONTENT_Y);
@@ -478,5 +430,49 @@ static void lvgl_port_ui_init(void)
     lv_obj_set_style_border_side(right, LV_BORDER_SIDE_LEFT, 0);
     lv_obj_set_style_border_color(right, lv_color_hex(0xE8E8E4), 0);
     lv_obj_set_style_radius(right, 0, 0);
+}
 
+// Driver init
+
+void lvgl_port_init(void)
+{
+    lv_init();
+
+    lv_color_t *lvgl_buf = heap_caps_malloc(
+        SCREEN_W * 20 * sizeof(lv_color_t),
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    assert(lvgl_buf);
+
+    static lv_disp_draw_buf_t draw_buf;
+    lv_disp_draw_buf_init(&draw_buf, lvgl_buf, NULL, SCREEN_W * 20);
+
+    static lv_disp_drv_t disp_drv;
+    lv_disp_drv_init(&disp_drv);
+    disp_drv.hor_res      = SCREEN_W;
+    disp_drv.ver_res      = SCREEN_H;
+    disp_drv.flush_cb     = flush_cb;
+    disp_drv.draw_buf     = &draw_buf;
+    disp_drv.full_refresh = 0;
+    lv_disp_drv_register(&disp_drv);
+
+    static lv_indev_drv_t indev_drv;
+    lv_indev_drv_init(&indev_drv);
+    indev_drv.type    = LV_INDEV_TYPE_POINTER;
+    indev_drv.read_cb = touch_read_cb;
+    lv_indev_drv_register(&indev_drv);
+
+    xTaskCreatePinnedToCore(tick_task, "lvgl_tick", 2048, NULL, 5, NULL, 1);
+
+    lvgl_port_ui_init();
+}
+
+// Render
+
+void lvgl_port_render_frame(void)
+{
+    lv_timer_t *refr = lv_disp_get_default()->refr_timer;
+    lv_timer_pause(refr);
+    lv_timer_handler();              // input phase: indev fires, dirty areas accumulate
+    lv_timer_resume(refr);
+    lv_refr_now(lv_disp_get_default()); // render all accumulated dirty areas immediately
 }
