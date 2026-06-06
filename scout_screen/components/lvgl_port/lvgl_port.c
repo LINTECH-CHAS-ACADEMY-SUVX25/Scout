@@ -210,22 +210,6 @@ static lv_obj_t *make_label(lv_obj_t *parent, const char *text,
     return l;
 }
 
-static lv_obj_t *make_bar(lv_obj_t *parent, int32_t w)
-{
-    lv_obj_t *track = make_obj(parent);
-    lv_obj_set_size(track, w, 3);
-    lv_obj_set_style_bg_color(track, lv_color_hex(0xE0E0DA), 0);
-    lv_obj_set_style_bg_opa(track, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(track, 2, 0);
-
-    lv_obj_t *fill = make_obj(track);
-    lv_obj_set_size(fill, 0, 3);
-    lv_obj_align(fill, LV_ALIGN_LEFT_MID, 0, 0);
-    lv_obj_set_style_bg_color(fill, lv_color_hex(0x185FA5), 0);
-    lv_obj_set_style_bg_opa(fill, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(fill, 2, 0);
-    return fill;
-}
 
 static lv_obj_t *create_joy_tick(lv_obj_t *parent, lv_align_t align,
                                    int32_t xo, int32_t yo, bool horiz)
