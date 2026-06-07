@@ -1,7 +1,8 @@
 #include "camera.h"
 #include "esp_camera.h"
 
-// AI-Thinker ESP32-CAM
+// AI-Thinker ESP32-CAM — pin map and capture adapter.
+
 #define CAM_PIN_PWDN    32
 #define CAM_PIN_RESET   -1
 #define CAM_PIN_XCLK     0
@@ -18,6 +19,8 @@
 #define CAM_PIN_VSYNC   25
 #define CAM_PIN_HREF    23
 #define CAM_PIN_PCLK    22
+
+static camera_fb_t *s_fb;
 
 esp_err_t camera_init(void)
 {
@@ -46,4 +49,21 @@ esp_err_t camera_init(void)
     };
     esp_err_t result = esp_camera_init(&config);
     return result;
+}
+
+bool camera_capture(const uint8_t **buf, size_t *len)
+{
+    s_fb = esp_camera_fb_get();
+    if(!s_fb) return false;
+    *buf = s_fb->buf;
+    *len = s_fb->len;
+    return true;
+}
+
+void camera_release(void)
+{
+    if(s_fb) {
+        esp_camera_fb_return(s_fb);
+        s_fb = NULL;
+    }
 }

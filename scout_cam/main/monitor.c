@@ -13,6 +13,8 @@
 #include <string.h>
 #include <stdio.h>
 
+// Periodically logs heap usage and task count so regressions are visible in the monitor.
+
 static const char *TAG = "monitor";
 
 static void uart_puts(const char *s)
@@ -43,62 +45,18 @@ static void decode_motors(uint8_t cmd, const char **left, const char **right)
     bool lft = (cmd & CMD_LEFT) != 0;
     bool rgt = (cmd & CMD_RIGHT) != 0;
 
-    if (fwd && bwd)
-    {
-        fwd = false;
-        bwd = false;
-    }
-    if (lft && rgt)
-    {
-        lft = false;
-        rgt = false;
-    }
+    if(fwd && bwd) { fwd = false; bwd = false; }
+    if(lft && rgt) { lft = false; rgt = false; }
 
-    if (fwd && lft)
-    {
-        *left = "fwd";
-        *right = "stop";
-    }
-    else if (fwd && rgt)
-    {
-        *left = "stop";
-        *right = "fwd";
-    }
-    else if (bwd && lft)
-    {
-        *left = "bwd";
-        *right = "stop";
-    }
-    else if (bwd && rgt)
-    {
-        *left = "stop";
-        *right = "bwd";
-    }
-    else if (fwd)
-    {
-        *left = "fwd";
-        *right = "fwd";
-    }
-    else if (bwd)
-    {
-        *left = "bwd";
-        *right = "bwd";
-    }
-    else if (lft)
-    {
-        *left = "fwd";
-        *right = "bwd";
-    }
-    else if (rgt)
-    {
-        *left = "bwd";
-        *right = "fwd";
-    }
-    else
-    {
-        *left = "stop";
-        *right = "stop";
-    }
+    if(fwd && lft)       { *left = "fwd";  *right = "stop"; }
+    else if(fwd && rgt)  { *left = "stop"; *right = "fwd";  }
+    else if(bwd && lft)  { *left = "bwd";  *right = "stop"; }
+    else if(bwd && rgt)  { *left = "stop"; *right = "bwd";  }
+    else if(fwd)         { *left = "fwd";  *right = "fwd";  }
+    else if(bwd)         { *left = "bwd";  *right = "bwd";  }
+    else if(lft)         { *left = "fwd";  *right = "bwd";  }
+    else if(rgt)         { *left = "bwd";  *right = "fwd";  }
+    else                 { *left = "stop"; *right = "stop"; }
 }
 
 static void cmd_status(void)
