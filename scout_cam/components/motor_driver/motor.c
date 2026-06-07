@@ -2,6 +2,8 @@
 #include "rc_protocol.h"
 #include "driver/gpio.h"
 
+// L298N H-bridge driver for the AI-Thinker ESP32-CAM board.
+
 #define PIN_IN1  GPIO_NUM_12
 #define PIN_IN2  GPIO_NUM_13
 #define PIN_IN3  GPIO_NUM_14
@@ -14,19 +16,19 @@ void motor_apply(uint8_t cmd)
     bool lft = cmd & CMD_LEFT;
     bool rgt = cmd & CMD_RIGHT;
 
-    if (fwd && bwd) { fwd = false; bwd = false; }
-    if (lft && rgt) { lft = false; rgt = false; }
+    if(fwd && bwd) { fwd = false; bwd = false; }
+    if(lft && rgt) { lft = false; rgt = false; }
 
     int in1, in2, in3, in4;
-    if (fwd && lft)       { in1 = 1; in2 = 0; in3 = 0; in4 = 0; }
-    else if (fwd && rgt)  { in1 = 0; in2 = 0; in3 = 1; in4 = 0; }
-    else if (bwd && lft)  { in1 = 0; in2 = 1; in3 = 0; in4 = 0; }
-    else if (bwd && rgt)  { in1 = 0; in2 = 0; in3 = 0; in4 = 1; }
-    else if (fwd)         { in1 = 1; in2 = 0; in3 = 1; in4 = 0; }
-    else if (bwd)         { in1 = 0; in2 = 1; in3 = 0; in4 = 1; }
-    else if (lft)         { in1 = 1; in2 = 0; in3 = 0; in4 = 1; }
-    else if (rgt)         { in1 = 0; in2 = 1; in3 = 1; in4 = 0; }
-    else                  { in1 = 0; in2 = 0; in3 = 0; in4 = 0; }
+    if(fwd && lft)      { in1 = 1; in2 = 0; in3 = 0; in4 = 0; }
+    else if(fwd && rgt) { in1 = 0; in2 = 0; in3 = 1; in4 = 0; }
+    else if(bwd && lft) { in1 = 0; in2 = 1; in3 = 0; in4 = 0; }
+    else if(bwd && rgt) { in1 = 0; in2 = 0; in3 = 0; in4 = 1; }
+    else if(fwd)        { in1 = 1; in2 = 0; in3 = 1; in4 = 0; }
+    else if(bwd)        { in1 = 0; in2 = 1; in3 = 0; in4 = 1; }
+    else if(lft)        { in1 = 1; in2 = 0; in3 = 0; in4 = 1; }
+    else if(rgt)        { in1 = 0; in2 = 1; in3 = 1; in4 = 0; }
+    else                { in1 = 0; in2 = 0; in3 = 0; in4 = 0; }
 
     gpio_set_level(PIN_IN1, in1);
     gpio_set_level(PIN_IN2, in2);
