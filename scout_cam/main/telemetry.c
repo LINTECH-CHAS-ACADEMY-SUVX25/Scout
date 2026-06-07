@@ -3,12 +3,14 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 
+// Placeholder telemetry task — extend this to collect and forward sensor data.
+
 static const char *TAG = "telemetry";
 
 static void telemetry_task(void *arg)
 {
     (void)arg;
-    while (1) {
+    while(1) {
         ESP_LOGI(TAG, "telemetry: placeholder task active");
         vTaskDelay(pdMS_TO_TICKS(3000));
     }

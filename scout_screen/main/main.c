@@ -1,11 +1,11 @@
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "wifi.h"
+#include "wifi_ap.h"
 #include "display.h"
 #include "ui.h"
+#include "monitor.h"
 #include "stream.h"
 #include "render.h"
-#include "monitor.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "esp_log.h"
 
 static const char *TAG = "screen";
@@ -23,6 +23,5 @@ void app_main(void)
     ESP_LOGI(TAG, "Render task started");
     ui_intro_screen();
     ESP_LOGI(TAG, "Intro screen loaded");
-
     vTaskDelete(NULL);
 }

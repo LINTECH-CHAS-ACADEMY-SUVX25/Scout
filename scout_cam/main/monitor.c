@@ -5,12 +5,14 @@
 #include "esp_heap_caps.h"
 #include <inttypes.h>
 
+// Periodically logs heap usage and task count so regressions are visible in the monitor.
+
 static const char *TAG = "monitor";
 
 static void monitor_task(void *arg)
 {
     (void)arg;
-    while (1) {
+    while(1) {
         uint32_t free_heap  = esp_get_free_heap_size();
         uint32_t min_heap   = esp_get_minimum_free_heap_size();
         UBaseType_t n_tasks = uxTaskGetNumberOfTasks();
