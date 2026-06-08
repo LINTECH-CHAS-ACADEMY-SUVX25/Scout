@@ -1,11 +1,15 @@
 #include "udp_stream.hpp"
 #include "motor_task.hpp"
+
+extern "C" {
 #include "rc_protocol.h"
 #include "udp.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_task_wdt.h"
+}
+
 #include <string.h>
 
 // A JPEG frame is split across UDP fragments to stay under the WiFi MTU.

@@ -14,7 +14,7 @@ public:
     int  recv(uint8_t *buf, size_t len) override;
 
 private:
-    int                s_sock      = -1;
-    struct sockaddr_in s_dest      = {};
-    bool               s_connected = false;
+    int                sock_      = -1;
+    struct sockaddr_in dest_      = {};
+    bool               connected_ = false;
 };

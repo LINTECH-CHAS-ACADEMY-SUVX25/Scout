@@ -100,7 +100,7 @@ static void render_task(void *arg)
         ui_render_frame();
         int64_t render_ms = (esp_timer_get_time() - render_t) / 1000;
         if(render_ms > 5)
-            ESP_LOGI(TAG, "lvgl frame rendered in %"PRId64"ms", render_ms);
+            ESP_LOGI(TAG, "lvgl frame rendered in %" PRId64 "ms", render_ms);
 
         send_rc_command(&last_cmd);
         try_decode_frame();

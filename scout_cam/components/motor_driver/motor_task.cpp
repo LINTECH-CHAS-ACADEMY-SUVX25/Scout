@@ -1,10 +1,13 @@
 #include "motor_task.hpp"
+
+extern "C" {
 #include "rc_protocol.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "esp_log.h"
 #include "esp_task_wdt.h"
+}
 
 // Receives CMD_* bytes from udp_stream via a queue and applies them via IMotor.
 // Times out after 500 ms without a command and sends CMD_STOP as a safety measure.
@@ -13,7 +16,7 @@
 static const char   *TAG = "motor";
 static QueueHandle_t s_queue;
 static IMotor       *s_motor;
-static uint8_t       s_last_cmd = 0;
+static uint8_t       s_last_cmd = CMD_STOP;
 
 static void motor_task(void *arg)
 {

@@ -63,3 +63,23 @@ void wifi_connect(void)
     ESP_LOGI(TAG, "connecting to %s...", AP_SSID);
     xEventGroupWaitBits(s_wifi_events, CONNECTED_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
 }
+
+bool wifi_sta_is_connected(void)
+{
+    wifi_ap_record_t ap;
+    return esp_wifi_sta_get_ap_info(&ap) == ESP_OK;
+}
+
+int8_t wifi_sta_rssi(void)
+{
+    wifi_ap_record_t ap = {0};
+    esp_wifi_sta_get_ap_info(&ap);
+    return ap.rssi;
+}
+
+uint8_t wifi_sta_channel(void)
+{
+    wifi_ap_record_t ap = {0};
+    esp_wifi_sta_get_ap_info(&ap);
+    return ap.primary;
+}
