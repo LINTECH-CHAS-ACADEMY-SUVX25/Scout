@@ -1,7 +1,6 @@
 #include "frag_tx.h"
 #include "udp.h"
 #include "rc_protocol.h"
-#include "lwip/sockets.h"
 #include <string.h>
 
 // Packet assembly and fragmentation for the UDP video stream.
@@ -9,10 +8,15 @@
 // receiver knows the full JPEG size before reassembling.
 // All other fragments carry raw JPEG data at their respective byte offset.
 
+static struct sockaddr_in s_dest;
 static uint8_t s_pkt[PKT_MAX];
 
-void frag_tx(int sock, const struct sockaddr_in *dest,
-             const uint8_t *buf, uint32_t len, uint16_t seq)
+void frag_tx_init(const char *ip, uint16_t port)
+{
+    s_dest = udp_addr(ip, port);
+}
+
+void frag_tx(int sock, const uint8_t *buf, uint32_t len, uint16_t seq)
 {
     uint8_t  n_frags = (len <= FIRST_DATA) ? 1 : 1 + (len - FIRST_DATA + FRAG_SIZE - 1) / FRAG_SIZE;
     uint32_t len_be  = htonl(len);
@@ -38,6 +42,6 @@ void frag_tx(int sock, const struct sockaddr_in *dest,
         p    += chunk;
         sent += chunk;
 
-        udp_tx(sock, dest, s_pkt, p - s_pkt);
+        udp_tx(sock, &s_dest, s_pkt, p - s_pkt);
     }
 }

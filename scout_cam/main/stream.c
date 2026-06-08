@@ -15,11 +15,9 @@
 
 static const char *TAG = "stream";
 
-static struct sockaddr_in s_dest;
-
 void stream_init(void)
 {
-    s_dest = udp_addr(S3_IP, VID_PORT);
+    frag_tx_init(S3_IP, VID_PORT);
     ESP_LOGI(TAG, "streaming to %s:%d, commands on :%d", S3_IP, VID_PORT, CMD_PORT);
 }
 
@@ -57,7 +55,7 @@ void stream_run(void *arg)
             continue;
         }
 
-        frag_tx(sock, &s_dest, buf, (uint32_t)len, seq++);
+        frag_tx(sock, buf, (uint32_t)len, seq++);
         camera_release();
 
         uint8_t cmd;

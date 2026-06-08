@@ -97,3 +97,18 @@ rolling-average statistics to the STREAM monitor output.
 - Function order: `_init` before `_run` in all task files
 - `udp_stream_init` was a no-op; `stream_init` now sets the destination address and logs
 - `motor_cmd` TAG changed from `"motor"` to `"motor_cmd"` (three files shared the same TAG)
+
+### Final consistency pass
+
+- `frag_tx` API cleaned up: destination address moved from parameter to internal
+  `static struct sockaddr_in s_dest`; new `frag_tx_init(ip, port)` stores it.
+  `#include "lwip/sockets.h"` removed from `frag_tx.h` — struct type no longer leaks
+  into callers. `stream.c` calls `frag_tx_init` in `stream_init()` instead.
+- `camera_init()` changed from `esp_err_t` to `void`; `ESP_ERROR_CHECK` now internal;
+  `ESP_LOGI(TAG, "camera ready")` added; comment block added to `camera.c` explaining
+  the module's role (hides `camera_fb_t` from task code).
+- `camera.h` no longer includes `esp_err.h`.
+- `main.c` startup log removed; `esp_err.h` include removed; `camera_init()` call
+  simplified; `vTaskDelete(NULL)` added — matches `scout_screen/main/main.c` pattern.
+- `docs/scout_cam_flow.md` stale folder references corrected (`motor_driver/` →
+  `l298n/`, `wdt/` → `watchdog/`).

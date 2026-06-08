@@ -1,7 +1,12 @@
 #include "camera.h"
 #include "esp_camera.h"
+#include "esp_log.h"
 
-// AI-Thinker ESP32-CAM — pin map and capture adapter.
+// Driver wrapper for the AI-Thinker ESP32-CAM (OV2640).
+// Hides esp_camera_fb_t from all task code — callers only see
+// a raw byte pointer via camera_capture / camera_release.
+
+static const char *TAG = "camera";
 
 #define CAM_PIN_PWDN    32
 #define CAM_PIN_RESET   -1
@@ -22,7 +27,7 @@
 
 static camera_fb_t *s_fb;
 
-esp_err_t camera_init(void)
+void camera_init(void)
 {
     camera_config_t config = {
         .pin_pwdn     = CAM_PIN_PWDN,
@@ -47,8 +52,8 @@ esp_err_t camera_init(void)
         .fb_location  = CAMERA_FB_IN_PSRAM,
         .grab_mode    = CAMERA_GRAB_LATEST, // always get the newest frame, skip older ones
     };
-    esp_err_t result = esp_camera_init(&config);
-    return result;
+    ESP_ERROR_CHECK(esp_camera_init(&config));
+    ESP_LOGI(TAG, "camera ready");
 }
 
 bool camera_capture(const uint8_t **buf, size_t *len)
