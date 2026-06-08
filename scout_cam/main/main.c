@@ -1,12 +1,11 @@
 #include "wifi_sta.h"
-#include "motor.h"
 #include "camera.h"
-#include "motor_task.h"
-#include "udp_stream.h"
-#include "esp_log.h"
-#include "esp_err.h"
+#include "motor.h"
+#include "stream.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_log.h"
+#include "esp_err.h"
 
 static const char *TAG = "scout_cam";
 
@@ -18,11 +17,9 @@ void app_main(void)
     wifi_connect();
 
     ESP_ERROR_CHECK(camera_init());
-    ESP_LOGI(TAG, "Camera ready");
+    ESP_LOGI(TAG, "camera ready");
 
-    motor_task_init();
-    xTaskCreate(motor_task_run, "motor_task", 2048, NULL, 6, NULL);
-
-    udp_stream_init();
-    xTaskCreate(udp_stream_run, "udp_stream", 4096, NULL, 5, NULL);
+    xTaskCreate(motor_run, "motor", 2048, NULL, 6, NULL);
+    stream_init();
+    xTaskCreate(stream_run, "stream", 4096, NULL, 5, NULL);
 }

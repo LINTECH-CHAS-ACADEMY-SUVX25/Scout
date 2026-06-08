@@ -10,18 +10,27 @@
 
 // Blocks until we have an IP — nothing can stream before this returns.
 
+#define RETRY_DELAY_US 1000000   // 1 s between reconnect attempts
+
 static const char *TAG = "wifi_sta";
 
 static EventGroupHandle_t s_wifi_events;
+static esp_timer_handle_t s_retry_timer;
 #define CONNECTED_BIT BIT0
+
+static void retry_connect(void *arg)
+{
+    esp_wifi_connect();
+}
 
 static void on_wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
     if(base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
     } else if(base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
-        ESP_LOGW(TAG, "disconnected — retrying");
-        esp_wifi_connect();
+        ESP_LOGW(TAG, "disconnected — retrying in 1s");
+        esp_timer_stop(s_retry_timer);
+        esp_timer_start_once(s_retry_timer, RETRY_DELAY_US);
     } else if(base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *e = data;
         ESP_LOGI(TAG, "got IP: " IPSTR, IP2STR(&e->ip_info.ip));
@@ -49,6 +58,12 @@ void wifi_connect(void)
         WIFI_EVENT, ESP_EVENT_ANY_ID, on_wifi_event, NULL, NULL));
     ESP_ERROR_CHECK(esp_event_handler_instance_register(
         IP_EVENT, IP_EVENT_STA_GOT_IP, on_wifi_event, NULL, NULL));
+
+    esp_timer_create_args_t timer_args = {
+        .callback = retry_connect,
+        .name     = "wifi_retry",
+    };
+    ESP_ERROR_CHECK(esp_timer_create(&timer_args, &s_retry_timer));
 
     wifi_config_t wifi_cfg = {
         .sta = {

@@ -115,7 +115,7 @@ Drives the display on core 1: LVGL tick, JPEG decode, framebuffer blit, RC comma
 | `jpeg` | [jpeg.c](../shared_components/jpeg/jpeg.c) | `jpeg_init_canvas`, `jpeg_canvas_get` |
 | `display` | [display.c](../scout_screen/components/display/display.c) | `display_blit_region`, `display_clear_region` |
 | `lvgl_port` | [lvgl_port.c](../scout_screen/components/lvgl_port/lvgl_port.c) | `lvgl_port_render_frame`, `lvgl_port_get_cmd`, `lvgl_port_ui_update` |
-| `rc_protocol` | [rc_protocol.h](../shared_components/rc_protocol/rc_protocol.h) | `CMD_STOP`, `CMD_*` bitmasks |
+| `rc_protocol` | [rc_protocol.h](../shared_components/rc_protocol/rc_protocol.h) | `CMD_STOP`, `CMD_*` bitmasks, `CAM_W`, `CAM_H` |
 
 ---
 
@@ -137,7 +137,7 @@ UART CLI on any core. Reads lines from UART0 and dispatches diagnostic commands.
 | Adapter | Type | Depends on | Why |
 |---|---|---|---|
 | `frag_rx` | adapter | `frame_buf`, `rc_protocol`, `lwip` | Writes into assembly buffer; needs protocol constants and `ntohs`/`ntohl` |
-| `frame_buf` | adapter | `jpeg`, `rc_protocol`, FreeRTOS | Calls `jpeg_decode_rgb565`; needs `FRAME_MAX`/`PKT_MAX`; mutex for ping-pong |
+| `frame_buf` | adapter | `jpeg`, `rc_protocol`, FreeRTOS | Calls `jpeg_decode_rgb565`; needs `FRAME_MAX`/`PKT_MAX`; mutex for ping-pong; maintains rolling-average ring buffers (`stream_stats_t`) for transfer time, decode time, frame size, and FPS |
 | `cam_cmd` | adapter | `udp`, `rc_protocol`, FreeRTOS | Calls `udp_tx`; needs `CMD_PORT`; mutex guards cross-core address access |
 | `monitor_cmds` | adapter | `frame_buf`, `uart_console` | Reads `stream_stats_t` from frame_buf; prints via uart_console |
 | `uart_console` | wrapper | `esp_driver_uart` | Wraps UART driver for line-mode input/output |

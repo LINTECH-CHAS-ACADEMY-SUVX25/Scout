@@ -10,9 +10,11 @@ adapters    udp.c  display.c  uart_console.c  wifi.c  jpeg_decode.c
 drivers     lwip   rgb_lcd   driver/uart        esp_wifi
 ```
 * Task files must never include SDK headers (`driver/`, `esp_wifi.h`, `lwip/`) directly
+* `CMakeLists.txt` REQUIRES lists only project components and shared components — SDK packages (`esp_wifi`, `nvs_flash`, `esp_netif`, `lwip`) belong in the component that wraps them, not in `main`'s REQUIRES
 * Waveshare files (`i2c.c`, `gt911.c`, `rgb_lcd_port.c`, `io_extension.c`) are external — do not modify them
 * Each task owns its data; other tasks access it through public functions, never shared globals
 * Shared state accessed by more than one task must be protected with a mutex
+* A module owns its own state — do not create a satellite file whose only purpose is to hold state on behalf of another module; merge the state into the module that is responsible for it
 
 ## File types
 Every file has a type that describes its role in the architecture:
@@ -32,6 +34,9 @@ Every file has a type that describes its role in the architecture:
 * `shared_components/` — the file is included by both scout_cam and scout_screen
 * `components/` — the file does not import any module from `main/`
 * `main/` — the file imports one or more modules from `main/`, or is application-specific
+* `main/adapters/` — adapter files that translate between a task and a component or shared module; task files (`stream.c`, `render.c`, `monitor.c`) stay at the top level of `main/`
+
+A file that imports nothing from `main/` and wraps only SDK or shared components belongs in `components/`, not `main/`, even if it is currently only used by one project.
 
 ## File structure
 A `.c` file follows this order:

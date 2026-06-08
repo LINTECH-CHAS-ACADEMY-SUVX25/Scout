@@ -1,24 +1,30 @@
-#include "udp_stream.h"
+#include "stream.h"
 #include "frag_tx.h"
 #include "camera.h"
 #include "motor_cmd.h"
+#include "watchdog.h"
 #include "udp.h"
 #include "rc_protocol.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
-#include "esp_task_wdt.h"
 
 // Task — captures JPEG frames from the camera and streams them to the dashboard via UDP.
 // Also drains inbound CMD bytes from the dashboard and forwards them to the motor task.
 // Exists because camera capture and UDP I/O both block and must run together.
 
-static const char *TAG = "udp_stream";
+static const char *TAG = "stream";
 
-void udp_stream_run(void *arg)
+static struct sockaddr_in s_dest;
+
+void stream_init(void)
 {
-    struct sockaddr_in dest = udp_addr(S3_IP, VID_PORT);
+    s_dest = udp_addr(S3_IP, VID_PORT);
+    ESP_LOGI(TAG, "streaming to %s:%d, commands on :%d", S3_IP, VID_PORT, CMD_PORT);
+}
 
+void stream_run(void *arg)
+{
     int sock = -1;
     while(sock < 0) {
         sock = udp_open(CMD_PORT);
@@ -28,13 +34,12 @@ void udp_stream_run(void *arg)
         }
     }
     udp_set_send_timeout(sock, 1);
-    ESP_LOGI(TAG, "streaming to %s:%d, commands on port %d", S3_IP, VID_PORT, CMD_PORT);
 
-    esp_task_wdt_add(NULL);
+    watchdog_register();
     uint16_t seq = 0;
 
     while(1) {
-        esp_task_wdt_reset();
+        watchdog_reset();
 
         const uint8_t *buf;
         size_t len;
@@ -52,15 +57,11 @@ void udp_stream_run(void *arg)
             continue;
         }
 
-        frag_tx(sock, &dest, buf, (uint32_t)len, seq++);
+        frag_tx(sock, &s_dest, buf, (uint32_t)len, seq++);
         camera_release();
 
         uint8_t cmd;
         while(udp_try_recv(sock, &cmd, 1) == 1)
             motor_cmd_send(cmd);
     }
-}
-
-void udp_stream_init(void)
-{
 }

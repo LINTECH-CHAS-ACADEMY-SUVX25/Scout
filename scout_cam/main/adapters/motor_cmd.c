@@ -3,7 +3,7 @@
 #include "freertos/queue.h"
 #include "esp_log.h"
 
-static const char *TAG = "motor";
+static const char *TAG = "motor_cmd";
 
 static QueueHandle_t s_queue;
 
