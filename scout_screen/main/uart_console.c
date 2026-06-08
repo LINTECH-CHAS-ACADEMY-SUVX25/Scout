@@ -42,3 +42,36 @@ bool uart_console_read_byte(uint8_t *ch, uint32_t timeout_ms)
 {
     return uart_read_bytes(UART_NUM_0, ch, 1, pdMS_TO_TICKS(timeout_ms)) == 1;
 }
+
+bool uart_console_read_line(char *buf, size_t size)
+{
+    static char s_line[64];
+    static int  s_pos = 0;
+
+    uint8_t ch;
+    if(!uart_console_read_byte(&ch, 20)) return false;
+
+    if(ch == '\r' || ch == '\n') {
+        if(s_pos == 0) return false;
+        s_line[s_pos] = '\0';
+        uart_console_println("");
+        int len = s_pos;
+        while(len > 0 && (s_line[len - 1] == ' ' || s_line[len - 1] == '\t'))
+            s_line[--len] = '\0';
+        s_pos = 0;
+        if(len == 0) return false;
+        snprintf(buf, size, "%s", s_line);
+        return true;
+    }
+    if(ch == 0x7F || ch == 0x08) {
+        // Backspace — erase the last character on the terminal.
+        if(s_pos > 0) { s_pos--; uart_console_write("\b \b"); }
+        return false;
+    }
+    if(s_pos < (int)sizeof(s_line) - 1) {
+        char echo[2] = { (char)ch, '\0' };
+        s_line[s_pos++] = (char)ch;
+        uart_console_write(echo);
+    }
+    return false;
+}

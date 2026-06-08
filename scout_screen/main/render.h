@@ -1,5 +1,7 @@
 #pragma once
 
-// Allocates the camera canvas buffer and starts the render task on core 1.
-// The render task drives LVGL, blits decoded frames, and sends RC commands.
+// Allocates the camera canvas buffer in PSRAM.
 void render_init(void);
+
+// Passed directly to xTaskCreatePinnedToCore — do not call from application code.
+void render_run(void *arg);
