@@ -39,12 +39,10 @@ graph TD
         MR["monitor_run"]
     end
 
-    subgraph adapters["Adapters — scout_screen/main/"]
+    subgraph adapters["Adapters — scout_screen/main/adapters/"]
         FB[frame_buf]
         CC[cam_cmd]
         FR[frag_rx]
-        UC[uart_console]
-        WA[wifi_ap]
         MC[monitor_cmds]
     end
 
@@ -54,9 +52,11 @@ graph TD
         RCP[rc_protocol]
     end
 
-    subgraph display_comp["Display components — scout_screen/components/"]
+    subgraph components["Components — scout_screen/components/"]
         DISP[display]
         UI[ui / lvgl_port]
+        UC[uart_console]
+        WA[wifi_ap]
     end
 
     subgraph sdk["ESP-IDF / External"]
@@ -96,9 +96,9 @@ Receives UDP packets on core 0 and reassembles them into complete JPEG frames fo
 
 | Uses | File | Provides |
 |---|---|---|
-| `frag_rx` | [frag_rx.c](../scout_screen/main/frag_rx.c) | Packet header parsing, fragment-to-buffer copy, bitmask completion check |
-| `frame_buf` | [frame_buf.c](../scout_screen/main/frame_buf.c) | Assembly buffer pointer, ping-pong publish |
-| `cam_cmd` | [cam_cmd.c](../scout_screen/main/cam_cmd.c) | Records camera IP from first packet, holds socket for RC send |
+| `frag_rx` | [frag_rx.c](../scout_screen/main/adapters/frag_rx.c) | Packet header parsing, fragment-to-buffer copy, bitmask completion check |
+| `frame_buf` | [frame_buf.c](../scout_screen/main/adapters/frame_buf.c) | Assembly buffer pointer, ping-pong publish |
+| `cam_cmd` | [cam_cmd.c](../scout_screen/main/adapters/cam_cmd.c) | Records camera IP from first packet, holds socket for RC send |
 | `udp` | [udp.c](../shared_components/udp/udp.c) | `udp_open`, `udp_set_rcvbuf`, `udp_rx` |
 | `rc_protocol` | [rc_protocol.h](../shared_components/rc_protocol/rc_protocol.h) | `VID_PORT`, `PKT_MAX` |
 
@@ -110,8 +110,8 @@ Drives the display on core 1: LVGL tick, JPEG decode, framebuffer blit, RC comma
 
 | Uses | File | Provides |
 |---|---|---|
-| `frame_buf` | [frame_buf.c](../scout_screen/main/frame_buf.c) | `frame_buf_try_decode`, `frame_buf_is_connected` |
-| `cam_cmd` | [cam_cmd.c](../scout_screen/main/cam_cmd.c) | `cam_cmd_send` — 1-byte RC command to camera |
+| `frame_buf` | [frame_buf.c](../scout_screen/main/adapters/frame_buf.c) | `frame_buf_try_decode`, `frame_buf_is_connected` |
+| `cam_cmd` | [cam_cmd.c](../scout_screen/main/adapters/cam_cmd.c) | `cam_cmd_send` — 1-byte RC command to camera |
 | `jpeg` | [jpeg.c](../shared_components/jpeg/jpeg.c) | `jpeg_init_canvas`, `jpeg_canvas_get` |
 | `display` | [display.c](../scout_screen/components/display/display.c) | `display_blit_region`, `display_clear_region` |
 | `ui` | [ui.c](../scout_screen/components/lvgl_port/ui.c) | `ui_tick`, `ui_render_frame`, `ui_get_cmd`, `ui_set_connected` |
@@ -125,10 +125,10 @@ UART CLI on any core. Reads lines from UART0 and dispatches diagnostic commands.
 
 | Uses | File | Provides |
 |---|---|---|
-| `frame_buf` | [frame_buf.c](../scout_screen/main/frame_buf.c) | `frame_buf_is_connected`, `frame_buf_get_stats` |
-| `uart_console` | [uart_console.c](../scout_screen/main/uart_console.c) | `uart_console_read_line`, `uart_console_println` |
-| `wifi_ap` | [wifi_ap.c](../scout_screen/main/wifi_ap.c) | `wifi_ap_sta_count` |
-| `monitor_cmds` | [monitor_cmds.c](../scout_screen/main/monitor_cmds.c) | `monitor_dispatch` — routes STATUS / STREAM / DIAG / HELP |
+| `frame_buf` | [frame_buf.c](../scout_screen/main/adapters/frame_buf.c) | `frame_buf_is_connected`, `frame_buf_get_stats` |
+| `uart_console` | [uart_console.c](../scout_screen/components/uart_console/uart_console.c) | `uart_console_read_line`, `uart_console_println` |
+| `wifi_ap` | [wifi_ap.c](../scout_screen/components/wifi_ap/wifi_ap.c) | `wifi_ap_sta_count` |
+| `monitor_cmds` | [monitor_cmds.c](../scout_screen/main/adapters/monitor_cmds.c) | `monitor_dispatch` — routes STATUS / STREAM / DIAG / HELP |
 
 ---
 
