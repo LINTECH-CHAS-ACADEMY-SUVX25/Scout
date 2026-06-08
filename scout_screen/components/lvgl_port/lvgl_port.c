@@ -1,6 +1,5 @@
 #include "lvgl_port.h"
 #include "display.h"
-#include "ui.h"
 #include "rc_protocol.h"
 #include "lvgl.h"
 #include "rgb_lcd_port.h"
@@ -15,6 +14,8 @@
 // Owns the full UI layout — widget creation, event callbacks, and rendering.
 
 #define JOY_RADIUS 52
+
+static volatile uint8_t s_cmd = CMD_STOP;
 
 // Widget handles
 
@@ -177,18 +178,23 @@ static void joy_event(lv_event_t *e)
         lv_obj_set_style_transform_zoom(s_knob, 210, 0);
         lv_obj_set_style_bg_color(s_knob, lv_color_hex(0x222222), 0);
 
-        ui_input_event(dx, dy);
-        update_cmd_badges(ui_get_cmd());
+        uint8_t cmd = CMD_STOP;
+        if(dy < -15) cmd |= CMD_FORWARD;
+        if(dy >  15) cmd |= CMD_BACKWARD;
+        if(dx < -15) cmd |= CMD_LEFT;
+        if(dx >  15) cmd |= CMD_RIGHT;
+        s_cmd = cmd;
+        update_cmd_badges(s_cmd);
 
         char buf[8];
-        snprintf(buf, sizeof(buf), "0x%02X", ui_get_cmd());
+        snprintf(buf, sizeof(buf), "0x%02X", s_cmd);
         lv_label_set_text(s_val_cmd_hex, buf);
     } else {
         lv_obj_align(s_knob, LV_ALIGN_CENTER, 0, 0);
         lv_obj_align(s_halo, LV_ALIGN_CENTER, 0, 0);
         lv_obj_set_style_transform_zoom(s_knob, 256, 0);
         lv_obj_set_style_bg_color(s_knob, lv_color_hex(0x3A3A3A), 0);
-        ui_input_release();
+        s_cmd = CMD_STOP;
         update_cmd_badges(CMD_STOP);
         lv_label_set_text(s_val_cmd_hex, "0x00");
     }
@@ -458,6 +464,8 @@ void lvgl_port_init(void)
 
     lvgl_port_ui_init();
 }
+
+uint8_t lvgl_port_get_cmd(void) { return s_cmd; }
 
 // Render
 

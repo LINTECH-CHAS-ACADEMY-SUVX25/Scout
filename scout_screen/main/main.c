@@ -1,6 +1,6 @@
 #include "wifi_ap.h"
 #include "display.h"
-#include "ui.h"
+#include "lvgl_port.h"
 #include "monitor.h"
 #include "stream.h"
 #include "render.h"
@@ -14,7 +14,7 @@ void app_main(void)
 {
     wifi_ap_start();
     display_init();
-    ui_init();
+    lvgl_port_init();
     ESP_LOGI(TAG, "UI initialized");
     monitor_init();
     xTaskCreate(monitor_run, "monitor", 3072, NULL, 2, NULL);

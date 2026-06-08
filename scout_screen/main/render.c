@@ -1,7 +1,7 @@
 #include "render.h"
 #include "frame_buf.h"
 #include "cam_cmd.h"
-#include "ui.h"
+#include "lvgl_port.h"
 #include "display.h"
 #include "jpeg.h"
 #include "rc_protocol.h"
@@ -32,19 +32,17 @@ void render_run(void *arg)
     while(1) {
         bool connected = frame_buf_is_connected();
         if(connected != was_connected) {
-            ui_set_connected(connected);
+            lvgl_port_ui_update(connected);
             if(!connected) display_clear_region(CAM_X, CAM_Y, CAM_W, CAM_H);
         }
         was_connected = connected;
 
-        ui_tick();
-
         int64_t t = esp_timer_get_time();
-        ui_render_frame();
+        lvgl_port_render_frame();
         int64_t ms = (esp_timer_get_time() - t) / 1000;
         if(ms > 5) ESP_LOGI(TAG, "lvgl frame in %"PRId64"ms", ms);
 
-        uint8_t c = ui_get_cmd();
+        uint8_t c = lvgl_port_get_cmd();
         if(c != last_cmd) {
             ESP_LOGI(TAG, "RC cmd: 0x%02x", c);
             last_cmd = c;
