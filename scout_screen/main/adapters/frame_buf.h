@@ -8,6 +8,10 @@ typedef struct {
     uint32_t last_frame_bytes;
     int32_t  last_transfer_ms;
     int32_t  last_decode_ms;
+    uint32_t avg_frame_bytes;
+    int32_t  avg_transfer_ms;
+    int32_t  avg_decode_ms;
+    uint32_t fps_tenths;
 } stream_stats_t;
 
 // Allocates PSRAM ping-pong buffers and packet receive buffer; creates the frame mutex.

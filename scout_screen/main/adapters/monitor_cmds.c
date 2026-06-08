@@ -15,10 +15,13 @@ static void cmd_status(const monitor_status_t *s)
 static void cmd_stream(const stream_stats_t *s)
 {
     uart_console_println("--- STREAM ---");
-    uart_console_printfln("frames      %lu",   (unsigned long)s->frame_count);
-    uart_console_printfln("last frame  %luB",  (unsigned long)s->last_frame_bytes);
-    uart_console_printfln("transfer    %ldms", (long)s->last_transfer_ms);
-    uart_console_printfln("decode      %ldms", (long)s->last_decode_ms);
+    uart_console_printfln("frames      %lu  %lu.%lu fps",
+        (unsigned long)s->frame_count,
+        (unsigned long)(s->fps_tenths / 10),
+        (unsigned long)(s->fps_tenths % 10));
+    uart_console_printfln("last frame  %luB  avg %luB",  (unsigned long)s->last_frame_bytes, (unsigned long)s->avg_frame_bytes);
+    uart_console_printfln("transfer    %ldms  avg %ldms", (long)s->last_transfer_ms, (long)s->avg_transfer_ms);
+    uart_console_printfln("decode      %ldms  avg %ldms", (long)s->last_decode_ms,   (long)s->avg_decode_ms);
 }
 
 static void cmd_diag(const monitor_diag_t *d)
