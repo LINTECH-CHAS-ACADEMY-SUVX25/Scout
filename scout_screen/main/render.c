@@ -47,7 +47,7 @@ static void render_run(void *arg)
         int64_t t = esp_timer_get_time();
         lvgl_port_render_frame();
         int64_t ms = (esp_timer_get_time() - t) / 1000;
-        if(ms > 5) ESP_LOGD(TAG, "lvgl frame in %"PRId64"ms", ms);
+        frame_buf_record_lvgl((int32_t)ms);
 
         uint8_t c = lvgl_port_get_cmd();
         if(c != last_cmd) {
@@ -58,8 +58,12 @@ static void render_run(void *arg)
 
         if(frame_buf_try_decode((uint8_t *)jpeg_canvas_get(), CAM_W * CAM_H * sizeof(uint16_t)))
             has_frame = true;
-        if(has_frame)
+        if(has_frame) {
+            int64_t tb = esp_timer_get_time();
             display_blit_region(CAM_X, CAM_Y, CAM_W, CAM_H, jpeg_canvas_get());
+            frame_buf_record_blit((int32_t)((esp_timer_get_time() - tb) / 1000));
+            frame_buf_record_disp_frame();
+        }
 
         vTaskDelay(pdMS_TO_TICKS(10));
     }

@@ -59,7 +59,29 @@ static uint64_t s_interval_sum;
 static uint32_t s_interval_idx;
 static uint32_t s_interval_count;
 static uint32_t s_prev_rx_ms;
-static uint32_t s_fps_tenths;
+static uint32_t s_rx_fps_tenths;
+
+static uint32_t s_disp_interval_hist[STAT_WINDOW];
+static uint64_t s_disp_interval_sum;
+static uint32_t s_disp_interval_idx;
+static uint32_t s_disp_interval_count;
+static uint32_t s_prev_disp_ms;
+static uint32_t s_disp_fps_tenths;
+
+static volatile int32_t s_last_blit_ms;
+static int32_t  s_blit_hist[STAT_WINDOW];
+static int64_t  s_blit_sum;
+static uint32_t s_blit_idx;
+static uint32_t s_blit_count;
+static int32_t  s_avg_blit_ms;
+
+static volatile int32_t s_last_lvgl_ms;
+static int32_t  s_lvgl_hist[STAT_WINDOW];
+static int64_t  s_lvgl_sum;
+static uint32_t s_lvgl_idx;
+static uint32_t s_lvgl_count;
+static int32_t  s_avg_lvgl_ms;
+
 
 void frame_buf_init(void)
 {
@@ -103,7 +125,7 @@ void frame_buf_publish(uint32_t len, int32_t transfer_ms)
         if(s_interval_count < STAT_WINDOW) s_interval_count++;
         // fps × 10 = 10000 × count / sum_ms  (avoids float, gives one decimal place)
         if(s_interval_sum > 0)
-            s_fps_tenths = (uint32_t)(10000ULL * s_interval_count / s_interval_sum);
+            s_rx_fps_tenths = (uint32_t)(10000ULL * s_interval_count / s_interval_sum);
     }
     s_prev_rx_ms = s_last_rx_ms;
 
@@ -154,6 +176,44 @@ bool frame_buf_try_decode(uint8_t *out_buf, size_t out_size)
     return true;
 }
 
+void frame_buf_record_disp_frame(void)
+{
+    uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000);
+    if(s_prev_disp_ms != 0) {
+        uint32_t delta = now_ms - s_prev_disp_ms;
+        s_disp_interval_sum -= s_disp_interval_hist[s_disp_interval_idx];
+        s_disp_interval_hist[s_disp_interval_idx] = delta;
+        s_disp_interval_sum += delta;
+        s_disp_interval_idx = (s_disp_interval_idx + 1) & (STAT_WINDOW - 1);
+        if(s_disp_interval_count < STAT_WINDOW) s_disp_interval_count++;
+        if(s_disp_interval_sum > 0)
+            s_disp_fps_tenths = (uint32_t)(10000ULL * s_disp_interval_count / s_disp_interval_sum);
+    }
+    s_prev_disp_ms = now_ms;
+}
+
+void frame_buf_record_blit(int32_t ms)
+{
+    s_last_blit_ms = ms;
+    s_blit_sum -= s_blit_hist[s_blit_idx];
+    s_blit_hist[s_blit_idx] = ms;
+    s_blit_sum += ms;
+    s_blit_idx = (s_blit_idx + 1) & (STAT_WINDOW - 1);
+    if(s_blit_count < STAT_WINDOW) s_blit_count++;
+    s_avg_blit_ms = (int32_t)(s_blit_sum / s_blit_count);
+}
+
+void frame_buf_record_lvgl(int32_t ms)
+{
+    s_last_lvgl_ms = ms;
+    s_lvgl_sum -= s_lvgl_hist[s_lvgl_idx];
+    s_lvgl_hist[s_lvgl_idx] = ms;
+    s_lvgl_sum += ms;
+    s_lvgl_idx = (s_lvgl_idx + 1) & (STAT_WINDOW - 1);
+    if(s_lvgl_count < STAT_WINDOW) s_lvgl_count++;
+    s_avg_lvgl_ms = (int32_t)(s_lvgl_sum / s_lvgl_count);
+}
+
 bool frame_buf_is_connected(void)
 {
     return (uint32_t)(esp_timer_get_time() / 1000) - s_last_rx_ms < LIVENESS_MS;
@@ -168,5 +228,10 @@ void frame_buf_get_stats(stream_stats_t *out)
     out->avg_frame_bytes  = s_avg_frame_bytes;
     out->avg_transfer_ms  = s_avg_transfer_ms;
     out->avg_decode_ms    = s_avg_decode_ms;
-    out->fps_tenths       = s_fps_tenths;
+    out->last_blit_ms     = s_last_blit_ms;
+    out->avg_blit_ms      = s_avg_blit_ms;
+    out->last_lvgl_ms     = s_last_lvgl_ms;
+    out->avg_lvgl_ms      = s_avg_lvgl_ms;
+    out->rx_fps_tenths    = s_rx_fps_tenths;
+    out->disp_fps_tenths  = s_disp_fps_tenths;
 }
