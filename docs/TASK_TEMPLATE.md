@@ -4,12 +4,10 @@ Every task file in Scout follows this pattern. A task owns a FreeRTOS loop and n
 
 ## Rules
 
-- Exactly two public functions: `<name>_init` and `<name>_run`
-- No static variables — state belongs in the adapter that owns it
-- No private functions — logic belongs in the adapter that owns it
+- One public function: `<name>_init`
+- `<name>_init` allocates resources, configures adapters, and spawns the task
+- `<name>_run` is `static` — it is an implementation detail, not part of the public API
 - No SDK headers (`driver/`, `lwip/`, `esp_wifi.h`) — only adapter headers
-- `<name>_run` is the raw FreeRTOS task function; `main.c` passes it to `xTaskCreate`
-- `<name>_init` allocates resources and configures adapters; it does not start the task
 
 ## task_name.c
 
@@ -25,19 +23,23 @@ Every task file in Scout follows this pattern. A task owns a FreeRTOS loop and n
 
 static const char *TAG = "task_name";
 
-void task_name_run(void *arg)
+static void task_name_run(void *arg);
+
+void task_name_init(void)
+{
+    adapter_a_init();
+    adapter_b_init();
+    xTaskCreate(task_name_run, "task_name", 4096, NULL, 5, NULL);
+    ESP_LOGI(TAG, "task_name ready");
+}
+
+static void task_name_run(void *arg)
 {
     while(1) {
         adapter_a_do_thing();
         adapter_b_do_other_thing();
         vTaskDelay(pdMS_TO_TICKS(10));
     }
-}
-
-void task_name_init(void)
-{
-    adapter_a_init();
-    adapter_b_init();
 }
 ```
 
@@ -46,10 +48,8 @@ void task_name_init(void)
 ```c
 #pragma once
 
-// One-line description of what this task does.
+// One-line description of what this task does. Spawns the task.
 void task_name_init(void);
-// Passed directly to xTaskCreate — do not call from application code.
-void task_name_run(void *arg);
 ```
 
 ## main.c pattern
@@ -58,10 +58,6 @@ void task_name_run(void *arg);
 stream_init();
 render_init();
 monitor_init();
-
-xTaskCreatePinnedToCore(stream_run,  "stream",  4096, NULL, 5, NULL, 0);
-xTaskCreatePinnedToCore(render_run,  "render",  8192, NULL, 4, NULL, 1);
-xTaskCreate           (monitor_run, "monitor", 3072, NULL, 2, NULL);
 
 vTaskDelete(NULL);
 ```

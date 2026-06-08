@@ -1,7 +1,4 @@
 #pragma once
 
-// Allocates frame buffers and the command mutex.
+// Allocates frame buffers, the command mutex, and spawns the stream task on core 0.
 void stream_init(void);
-
-// Passed directly to xTaskCreatePinnedToCore — do not call from application code.
-void stream_run(void *arg);

@@ -13,14 +13,17 @@
 
 static const char *TAG = "motor";
 
+static void motor_run(void *arg);
+
 void motor_init(void)
 {
     l298n_init();
     motor_cmd_init();
+    xTaskCreate(motor_run, "motor", 2048, NULL, 6, NULL);
     ESP_LOGI(TAG, "motor ready");
 }
 
-void motor_run(void *arg)
+static void motor_run(void *arg)
 {
     bool moving = false;
     watchdog_register();

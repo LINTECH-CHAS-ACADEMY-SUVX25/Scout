@@ -112,3 +112,12 @@ rolling-average statistics to the STREAM monitor output.
   simplified; `vTaskDelete(NULL)` added — matches `scout_screen/main/main.c` pattern.
 - `docs/scout_cam_flow.md` stale folder references corrected (`motor_driver/` →
   `l298n/`, `wdt/` → `watchdog/`).
+
+### xTaskCreate moved into _init functions (both projects)
+
+- Each `_init` now spawns its own task; `main.c` contains no `xTaskCreate` calls
+- `_run` functions are now `static` — implementation detail, not part of the public API
+- `_run` declarations removed from all public headers (`motor.h`, `stream.h`,
+  `monitor.h`, `render.h` on screen side)
+- `TASK_TEMPLATE.md` updated to reflect the new pattern
+- `docs/claude/CLAUDE.md` data flow sequences updated for both cam and screen

@@ -15,13 +15,16 @@
 
 static const char *TAG = "stream";
 
+static void stream_run(void *arg);
+
 void stream_init(void)
 {
     frag_tx_init(S3_IP, VID_PORT);
+    xTaskCreate(stream_run, "stream", 4096, NULL, 5, NULL);
     ESP_LOGI(TAG, "streaming to %s:%d, commands on :%d", S3_IP, VID_PORT, CMD_PORT);
 }
 
-void stream_run(void *arg)
+static void stream_run(void *arg)
 {
     int sock = -1;
     while(sock < 0) {

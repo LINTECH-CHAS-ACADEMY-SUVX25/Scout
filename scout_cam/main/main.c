@@ -13,8 +13,6 @@ void app_main(void)
     motor_init();
     wifi_connect();
     camera_init();
-    xTaskCreate(motor_run, "motor", 2048, NULL, 6, NULL);
     stream_init();
-    xTaskCreate(stream_run, "stream", 4096, NULL, 5, NULL);
     vTaskDelete(NULL);
 }

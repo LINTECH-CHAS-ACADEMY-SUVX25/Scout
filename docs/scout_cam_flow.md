@@ -7,12 +7,11 @@ the two tasks, then returns (FreeRTOS idle task takes over).
 
 ```mermaid
 flowchart LR
-    A[app_main] --> B[motor_init]
+    A[app_main] --> B["motor_init\n(spawns motor_run)"]
     B --> C["wifi_connect\n(blocks until IP)"]
     C --> D[camera_init]
-    D --> E["xTaskCreate\nmotor_run"]
-    E --> F[stream_init]
-    F --> G["xTaskCreate\nstream_run"]
+    D --> E["stream_init\n(spawns stream_run)"]
+    E --> F[vTaskDelete]
 ```
 
 Note: cam has no UART monitor — RX/TX pins are reserved for I2C (future BME280 sensor).

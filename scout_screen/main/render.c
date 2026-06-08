@@ -21,13 +21,16 @@
 
 static const char *TAG = "render";
 
+static void render_run(void *arg);
+
 void render_init(void)
 {
     jpeg_init_canvas(CAM_W, CAM_H);
+    xTaskCreatePinnedToCore(render_run, "render", 8192, NULL, 4, NULL, 1);
     ESP_LOGI(TAG, "canvas %dx%d allocated", CAM_W, CAM_H);
 }
 
-void render_run(void *arg)
+static void render_run(void *arg)
 {
     uint8_t last_cmd      = CMD_STOP;
     bool    was_connected = false;

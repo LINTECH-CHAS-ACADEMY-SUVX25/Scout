@@ -15,13 +15,16 @@
 
 static const char *TAG = "stream";
 
+static void stream_run(void *arg);
+
 void stream_init(void)
 {
     frame_buf_init();
     cam_cmd_init();
+    xTaskCreatePinnedToCore(stream_run, "udp_server", 4096, NULL, 5, NULL, 0);
 }
 
-void stream_run(void *arg)
+static void stream_run(void *arg)
 {
     int sock = udp_open(VID_PORT);
     if(sock < 0) { ESP_LOGE(TAG, "failed to open UDP socket"); vTaskDelete(NULL); return; }

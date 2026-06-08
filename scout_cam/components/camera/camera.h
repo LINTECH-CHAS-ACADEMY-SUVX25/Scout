@@ -1,6 +1,7 @@
 #pragma once
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 // Configures the OV2640 sensor and allocates frame buffers in PSRAM.
 // Must be called after WiFi is connected (camera and WiFi share DRAM).

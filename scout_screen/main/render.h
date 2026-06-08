@@ -1,7 +1,4 @@
 #pragma once
 
-// Allocates the camera canvas buffer in PSRAM.
+// Allocates the camera canvas buffer in PSRAM and spawns the render task on core 1.
 void render_init(void);
-
-// Passed directly to xTaskCreatePinnedToCore — do not call from application code.
-void render_run(void *arg);
