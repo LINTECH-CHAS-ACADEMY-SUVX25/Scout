@@ -1,8 +1,7 @@
-#include "udp_stream.h"
-#include "camera.h"
-#include "motor_task.h"
-#include "udp.h"
+#include "udp_stream.hpp"
+#include "motor_task.hpp"
 #include "rc_protocol.h"
+#include "udp.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
@@ -12,10 +11,14 @@
 // A JPEG frame is split across UDP fragments to stay under the WiFi MTU.
 // Fragment 0's payload is prefixed with [FRAME_MAGIC:1][frame_len:4] so the
 // receiver knows the full size before reassembling.
+// udp_stream never includes camera.h — it captures frames through ICamera.
 
 static const char *TAG = "udp_stream";
 
-static uint8_t s_pkt[PKT_MAX];
+static ICamera  *s_camera;
+static uint8_t   s_pkt[PKT_MAX];
+static uint32_t  s_frames_sent      = 0;
+static uint32_t  s_last_frame_bytes = 0;
 
 static void send_frame(int sock, const struct sockaddr_in *dest,
                         const uint8_t *buf, uint32_t len, uint16_t seq)
@@ -77,29 +80,37 @@ static void udp_stream_task(void *arg)
     while(1) {
         esp_task_wdt_reset();
 
-        const uint8_t *buf;
-        size_t len;
-        if(!camera_capture(&buf, &len)) {
+        Frame frame = {};
+        if(!s_camera->capture(frame)) {
             ESP_LOGE(TAG, "camera capture failed");
             motor_cmd_send(CMD_STOP);
             vTaskDelay(pdMS_TO_TICKS(100));
             continue;
         }
 
-        if(len > FRAME_MAX) {
+        if(frame.len > FRAME_MAX) {
             ESP_LOGW(TAG, "frame too large (%u B > %u) — lower jpeg_quality or frame_size",
-                     (unsigned)len, FRAME_MAX);
-            camera_release();
+                     (unsigned)frame.len, FRAME_MAX);
+            s_camera->releaseFrame();
             continue;
         }
 
-        send_frame(sock, &dest, buf, (uint32_t)len, seq++);
-        camera_release();
+        send_frame(sock, &dest, frame.data, (uint32_t)frame.len, seq++);
+        s_frames_sent++;
+        s_last_frame_bytes = frame.len;
+        s_camera->releaseFrame();
         drain_commands(sock);
     }
 }
 
-void udp_stream_start(void)
+void udp_stream_get_stats(udp_stream_stats_t *out)
 {
+    out->frames_sent      = s_frames_sent;
+    out->last_frame_bytes = s_last_frame_bytes;
+}
+
+void udp_stream_start(ICamera *camera)
+{
+    s_camera = camera;
     xTaskCreate(udp_stream_task, "udp_stream", 4096, NULL, 5, NULL);
 }

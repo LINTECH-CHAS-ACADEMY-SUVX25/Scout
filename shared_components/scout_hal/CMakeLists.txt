@@ -1,10 +1,5 @@
 idf_component_register(
     SRCS
-        "mock/MotorMock.cpp"
-        "mock/CameraMock.cpp"
-        "mock/NetworkMock.cpp"
-        "mock/DisplayMock.cpp"
     INCLUDE_DIRS
         "."
-        "mock"
 )

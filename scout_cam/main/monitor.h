@@ -1,4 +1,5 @@
 #pragma once
 
-// Starts a background task that logs free heap and task count every 5 seconds.
-void monitor_start(void);
+// Installs the UART0 driver and starts the interactive monitor task.
+// Commands: STATUS, MOTOR, SENSOR, DIAG, CONFIG, HELP
+void monitor_init(void);

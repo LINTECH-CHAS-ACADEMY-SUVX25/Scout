@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "udp.c"
+    SRCS "udp.c" "NetworkEsp32.cpp"
     INCLUDE_DIRS "."
-    REQUIRES lwip
+    REQUIRES lwip scout_hal
 )

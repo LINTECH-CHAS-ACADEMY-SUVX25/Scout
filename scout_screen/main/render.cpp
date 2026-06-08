@@ -1,28 +1,36 @@
-#include "render.h"
+#include "render.hpp"
+#include "IDisplay.hpp"
+
+extern "C" {
 #include "stream.h"
 #include "ui.h"
-#include "display.h"
 #include "rc_protocol.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_heap_caps.h"
+}
+
 #include <inttypes.h>
 #include <string.h>
 
 // Drives the render loop on core 1. Each tick: updates LVGL, renders the LVGL
 // frame, sends the current RC command, and blits any newly decoded camera frame.
+// render never includes display.h — it draws through IDisplay.
 
 static const char *TAG = "render";
 
-#define CAM_W  640
-#define CAM_H  480
-#define CAM_X  ((SCREEN_W - CAM_W) / 2)
-#define CAM_Y  ((SCREEN_H - CAM_H) / 2)
+static constexpr int SCREEN_W = 1024;
+static constexpr int SCREEN_H = 600;
+static constexpr int CAM_W    = 640;
+static constexpr int CAM_H    = 480;
+static constexpr int CAM_X    = (SCREEN_W - CAM_W) / 2;
+static constexpr int CAM_Y    = (SCREEN_H - CAM_H) / 2;
 
-static uint16_t *s_canvas_buf;
-static bool      s_has_frame = false;
+static IDisplay  *s_display;
+static uint16_t  *s_canvas_buf;
+static bool       s_has_frame = false;
 
 // Helpers
 
@@ -51,20 +59,14 @@ static void send_rc_command(uint8_t *last_cmd)
 
 static void blit_camera_frame(void)
 {
-    uint8_t *fb = (uint8_t *)display_get_fb(0);
-    for(int row = 0; row < CAM_H; row++) {
-        memcpy(fb + ((CAM_Y + row) * SCREEN_W + CAM_X) * 2,
-               (uint8_t *)s_canvas_buf + row * CAM_W * 2,
-               CAM_W * 2);
-    }
+    s_display->drawBitmap(CAM_X, CAM_Y, CAM_X + CAM_W, CAM_Y + CAM_H, s_canvas_buf);
 }
 
 static void clear_camera_area(void)
 {
-    uint8_t *fb = (uint8_t *)display_get_fb(0);
-    for(int row = 0; row < CAM_H; row++) {
-        memset(fb + ((CAM_Y + row) * SCREEN_W + CAM_X) * 2, 0x11, CAM_W * 2);
-    }
+    memset(s_canvas_buf, 0, CAM_W * CAM_H * sizeof(uint16_t));
+    s_display->drawBitmap(CAM_X, CAM_Y, CAM_X + CAM_W, CAM_Y + CAM_H, s_canvas_buf);
+    s_has_frame = false;
 }
 
 static void try_decode_frame(void)
@@ -80,7 +82,7 @@ static void try_decode_frame(void)
 static void render_task(void *arg)
 {
     (void)arg;
-    uint8_t last_cmd     = CMD_STOP;
+    uint8_t last_cmd      = CMD_STOP;
     bool    was_connected = false;
 
     while(1) {
@@ -108,9 +110,11 @@ static void render_task(void *arg)
 
 // Init
 
-void render_init(void)
+void render_init(IDisplay *display)
 {
-    s_canvas_buf = heap_caps_aligned_alloc(16, CAM_W * CAM_H * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+    s_display    = display;
+    s_canvas_buf = static_cast<uint16_t *>(
+        heap_caps_aligned_alloc(16, CAM_W * CAM_H * sizeof(uint16_t), MALLOC_CAP_SPIRAM));
     assert(s_canvas_buf);
     xTaskCreatePinnedToCore(render_task, "render", 8192, NULL, 4, NULL, 1);
 }
