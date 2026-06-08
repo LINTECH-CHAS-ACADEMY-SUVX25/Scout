@@ -1,6 +1,7 @@
 #pragma once
 
-// Starts the UDP stream task: captures JPEG frames, fragments them, and sends
-// them to the screen. Also drains inbound CMD bytes from CMD_PORT and forwards
-// them to the motor task.
-void udp_stream_start(void);
+// No-op placeholder — call before starting the stream task.
+void udp_stream_init(void);
+
+// Passed directly to xTaskCreate — do not call from application code.
+void udp_stream_run(void *arg);

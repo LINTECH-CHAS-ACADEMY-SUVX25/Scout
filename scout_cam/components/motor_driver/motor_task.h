@@ -1,9 +1,7 @@
 #pragma once
-#include <stdint.h>
 
-// Creates the motor queue and starts the motor task.
-void motor_task_start(void);
+// Creates the motor command queue.
+void motor_task_init(void);
 
-// Enqueues a CMD_* byte for the motor task. Safe to call from any task.
-// Drops the command and logs a warning if the queue is full.
-void motor_cmd_send(uint8_t cmd);
+// Passed directly to xTaskCreate — do not call from application code.
+void motor_task_run(void *arg);

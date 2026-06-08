@@ -1,61 +1,21 @@
 #include "udp_stream.h"
+#include "frag_tx.h"
 #include "camera.h"
-#include "motor_task.h"
+#include "motor_cmd.h"
 #include "udp.h"
 #include "rc_protocol.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_task_wdt.h"
-#include <string.h>
 
-// A JPEG frame is split across UDP fragments to stay under the WiFi MTU.
-// Fragment 0's payload is prefixed with [FRAME_MAGIC:1][frame_len:4] so the
-// receiver knows the full size before reassembling.
+// Task — captures JPEG frames from the camera and streams them to the dashboard via UDP.
+// Also drains inbound CMD bytes from the dashboard and forwards them to the motor task.
+// Exists because camera capture and UDP I/O both block and must run together.
 
 static const char *TAG = "udp_stream";
 
-static uint8_t s_pkt[PKT_MAX];
-
-static void send_frame(int sock, const struct sockaddr_in *dest,
-                        const uint8_t *buf, uint32_t len, uint16_t seq)
-{
-    uint8_t  n_frags = (len <= FIRST_DATA) ? 1 : 1 + (len - FIRST_DATA + FRAG_SIZE - 1) / FRAG_SIZE;
-    uint32_t len_be  = htonl(len);
-    uint32_t sent    = 0;
-
-    for(uint8_t fi = 0; fi < n_frags; fi++) {
-        uint8_t *p = s_pkt;
-        uint16_t seq_be = htons(seq);
-        memcpy(p, &seq_be, 2); p += 2;
-        *p++ = fi;
-        *p++ = n_frags;
-
-        uint32_t chunk;
-        if(fi == 0) {
-            *p++ = FRAME_MAGIC;
-            memcpy(p, &len_be, 4); p += 4;
-            chunk = (len < FIRST_DATA) ? len : FIRST_DATA;
-        } else {
-            uint32_t remaining = len - sent;
-            chunk = (remaining < FRAG_SIZE) ? remaining : FRAG_SIZE;
-        }
-        memcpy(p, buf + sent, chunk);
-        p    += chunk;
-        sent += chunk;
-
-        udp_tx(sock, dest, s_pkt, p - s_pkt);
-    }
-}
-
-static void drain_commands(int sock)
-{
-    uint8_t cmd;
-    while(udp_try_recv(sock, &cmd, 1) == 1)
-        motor_cmd_send(cmd);
-}
-
-static void udp_stream_task(void *arg)
+void udp_stream_run(void *arg)
 {
     struct sockaddr_in dest = udp_addr(S3_IP, VID_PORT);
 
@@ -67,8 +27,7 @@ static void udp_stream_task(void *arg)
             vTaskDelay(pdMS_TO_TICKS(1000));
         }
     }
-    struct timeval tv = { .tv_sec = 1, .tv_usec = 0 };
-    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    udp_set_send_timeout(sock, 1);
     ESP_LOGI(TAG, "streaming to %s:%d, commands on port %d", S3_IP, VID_PORT, CMD_PORT);
 
     esp_task_wdt_add(NULL);
@@ -93,13 +52,15 @@ static void udp_stream_task(void *arg)
             continue;
         }
 
-        send_frame(sock, &dest, buf, (uint32_t)len, seq++);
+        frag_tx(sock, &dest, buf, (uint32_t)len, seq++);
         camera_release();
-        drain_commands(sock);
+
+        uint8_t cmd;
+        while(udp_try_recv(sock, &cmd, 1) == 1)
+            motor_cmd_send(cmd);
     }
 }
 
-void udp_stream_start(void)
+void udp_stream_init(void)
 {
-    xTaskCreate(udp_stream_task, "udp_stream", 4096, NULL, 5, NULL);
 }

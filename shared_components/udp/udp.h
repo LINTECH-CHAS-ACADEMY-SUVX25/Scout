@@ -9,6 +9,7 @@
 int  udp_open(uint16_t bind_port);
 void udp_close(int sock);
 void udp_set_rcvbuf(int sock, int bytes);
+void udp_set_send_timeout(int sock, int seconds);
 
 // Blocking receive. src may be NULL if the source address is not needed.
 int  udp_rx(int sock, void *buf, size_t len, struct sockaddr_in *src);
