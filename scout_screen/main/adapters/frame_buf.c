@@ -16,7 +16,7 @@
 
 #define LIVENESS_MS 2000
 
-static const char *TAG = "stream";
+static const char *TAG = "frame_buf";
 
 static uint8_t          *s_asm_buf;
 static uint8_t          *s_dec_buf;
@@ -49,7 +49,7 @@ void frame_buf_publish(uint32_t len, int32_t transfer_ms)
     s_last_frame_bytes = len;
     s_last_transfer_ms = transfer_ms;
     s_last_rx_ms       = (uint32_t)(esp_timer_get_time() / 1000);
-    ESP_LOGI(TAG, "%"PRIu32" bytes in %"PRId32"ms", len, transfer_ms);
+    ESP_LOGD(TAG, "%"PRIu32" bytes in %"PRId32"ms", len, transfer_ms);
 
     xSemaphoreTake(s_frame_mutex, portMAX_DELAY);
     if(!s_decoding) {
@@ -83,7 +83,7 @@ bool frame_buf_try_decode(uint8_t *out_buf, size_t out_size)
     xSemaphoreGive(s_frame_mutex);
 
     if(!ok) return false;
-    ESP_LOGI(TAG, "decoded %"PRIu16"x%"PRIu16" in %"PRId64"ms (%"PRIu32" bytes)",
+    ESP_LOGD(TAG, "decoded %"PRIu16"x%"PRIu16" in %"PRId64"ms (%"PRIu32" bytes)",
              w, h, decode_ms, len);
     s_last_decode_ms = (int32_t)decode_ms;
     s_frame_count++;

@@ -15,6 +15,12 @@
 
 static const char *TAG = "monitor";
 
+void monitor_init(void)
+{
+    uart_console_init();
+    ESP_LOGI(TAG, "monitor ready on UART0");
+}
+
 void monitor_run(void *arg)
 {
     char line[64];
@@ -40,10 +46,4 @@ void monitor_run(void *arg)
 
         monitor_dispatch(line, &status, &stream_stats, &diag);
     }
-}
-
-void monitor_init(void)
-{
-    uart_console_init();
-    ESP_LOGI(TAG, "monitor ready on UART0");
 }

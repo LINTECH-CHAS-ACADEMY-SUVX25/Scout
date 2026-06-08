@@ -16,12 +16,16 @@
 // and blits any newly decoded camera frame into the framebuffer.
 // Exists to keep all display and RC output on a dedicated core away from networking.
 
-static const char *TAG = "render";
-
-#define CAM_W  640
-#define CAM_H  480
 #define CAM_X  ((SCREEN_W - CAM_W) / 2)
 #define CAM_Y  ((SCREEN_H - CAM_H) / 2)
+
+static const char *TAG = "render";
+
+void render_init(void)
+{
+    jpeg_init_canvas(CAM_W, CAM_H);
+    ESP_LOGI(TAG, "canvas %dx%d allocated", CAM_W, CAM_H);
+}
 
 void render_run(void *arg)
 {
@@ -40,11 +44,11 @@ void render_run(void *arg)
         int64_t t = esp_timer_get_time();
         lvgl_port_render_frame();
         int64_t ms = (esp_timer_get_time() - t) / 1000;
-        if(ms > 5) ESP_LOGI(TAG, "lvgl frame in %"PRId64"ms", ms);
+        if(ms > 5) ESP_LOGD(TAG, "lvgl frame in %"PRId64"ms", ms);
 
         uint8_t c = lvgl_port_get_cmd();
         if(c != last_cmd) {
-            ESP_LOGI(TAG, "RC cmd: 0x%02x", c);
+            ESP_LOGD(TAG, "RC cmd: 0x%02x", c);
             last_cmd = c;
         }
         cam_cmd_send(c);
@@ -56,9 +60,4 @@ void render_run(void *arg)
 
         vTaskDelay(pdMS_TO_TICKS(10));
     }
-}
-
-void render_init(void)
-{
-    jpeg_init_canvas(CAM_W, CAM_H);
 }

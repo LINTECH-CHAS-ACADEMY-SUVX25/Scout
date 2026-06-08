@@ -9,7 +9,7 @@ the three tasks, then deletes itself.
 flowchart LR
     A[app_main] --> B[wifi_ap_start]
     B --> C[display_init]
-    C --> D[ui_init]
+    C --> D[lvgl_port_init]
     D --> E[monitor_init]
     E --> F["xTaskCreate\nmonitor_run"]
     F --> G[stream_init]
@@ -54,7 +54,7 @@ graph TD
 
     subgraph components["Components — scout_screen/components/"]
         DISP[display]
-        UI[ui / lvgl_port]
+        UI[lvgl_port]
         UC[uart_console]
         WA[wifi_ap]
     end
@@ -114,7 +114,7 @@ Drives the display on core 1: LVGL tick, JPEG decode, framebuffer blit, RC comma
 | `cam_cmd` | [cam_cmd.c](../scout_screen/main/adapters/cam_cmd.c) | `cam_cmd_send` — 1-byte RC command to camera |
 | `jpeg` | [jpeg.c](../shared_components/jpeg/jpeg.c) | `jpeg_init_canvas`, `jpeg_canvas_get` |
 | `display` | [display.c](../scout_screen/components/display/display.c) | `display_blit_region`, `display_clear_region` |
-| `ui` | [ui.c](../scout_screen/components/lvgl_port/ui.c) | `ui_tick`, `ui_render_frame`, `ui_get_cmd`, `ui_set_connected` |
+| `lvgl_port` | [lvgl_port.c](../scout_screen/components/lvgl_port/lvgl_port.c) | `lvgl_port_render_frame`, `lvgl_port_get_cmd`, `lvgl_port_ui_update` |
 | `rc_protocol` | [rc_protocol.h](../shared_components/rc_protocol/rc_protocol.h) | `CMD_STOP`, `CMD_*` bitmasks |
 
 ---
@@ -145,4 +145,4 @@ UART CLI on any core. Reads lines from UART0 and dispatches diagnostic commands.
 | `jpeg` | wrapper | `espressif/esp_new_jpeg` | Thin wrapper over the hardware JPEG codec |
 | `udp` | wrapper | `lwip/sockets` | Thin BSD-socket wrappers |
 | `display` | driver wrapper | `esp_lcd_panel_ops`, GT911, waveshare RGB LCD | Hides panel init and framebuffer details behind a pixel API |
-| `ui / lvgl_port` | adapter | LVGL, `display` | Initialises LVGL, flush callback calls `display_draw_bitmap` |
+| `lvgl_port` | adapter | LVGL, `display`, `rc_protocol` | Initialises LVGL, owns joystick `CMD_*` state, flush callback calls `display_draw_bitmap` |

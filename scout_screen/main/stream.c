@@ -15,11 +15,17 @@
 
 static const char *TAG = "stream";
 
+void stream_init(void)
+{
+    frame_buf_init();
+    cam_cmd_init();
+}
+
 void stream_run(void *arg)
 {
     int sock = udp_open(VID_PORT);
-    if(sock < 0) { vTaskDelete(NULL); return; }
-    udp_set_rcvbuf(sock, 48 * 1024);
+    if(sock < 0) { ESP_LOGE(TAG, "failed to open UDP socket"); vTaskDelete(NULL); return; }
+    udp_set_rcvbuf(sock, MAX_FRAGS * PKT_MAX);
     cam_cmd_bind(sock);
     ESP_LOGI(TAG, "UDP video server on port %d", VID_PORT);
 
@@ -36,10 +42,4 @@ void stream_run(void *arg)
         if(result == FRAG_COMPLETE)
             frame_buf_publish(frame_len, transfer_ms);
     }
-}
-
-void stream_init(void)
-{
-    frame_buf_init();
-    cam_cmd_init();
 }
