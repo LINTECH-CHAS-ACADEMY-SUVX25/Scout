@@ -1,5 +1,5 @@
 #include "stream.h"
-#include "udp.h"
+#include "transport.h"
 #include "jpeg.h"
 #include "rc_protocol.h"
 #include "freertos/FreeRTOS.h"
@@ -31,9 +31,9 @@ static bool              s_new_frame;
 static bool              s_decoding;
 static SemaphoreHandle_t s_frame_mutex;
 
-static int                s_sock = -1;
-static struct sockaddr_in s_cam_addr;
-static bool               s_cam_known;
+static int               s_sock = -1;
+static transport_addr_t  s_cam_addr;
+static bool              s_cam_known;
 static SemaphoreHandle_t  s_cam_mutex;
 static volatile uint32_t  s_last_rx_ms;  // 32-bit so the render task reads it atomically
 
@@ -51,14 +51,13 @@ static struct {
 
 // Private functions
 
-static void learn_cam_addr(const struct sockaddr_in *src)
+static void learn_cam_addr(const transport_addr_t *src)
 {
     xSemaphoreTake(s_cam_mutex, portMAX_DELAY);
-    s_cam_addr          = *src;
-    s_cam_addr.sin_port = htons(CMD_PORT);
-    s_cam_known         = true;
+    s_cam_addr  = transport_addr_with_port(src, CMD_PORT);
+    s_cam_known = true;
     xSemaphoreGive(s_cam_mutex);
-    ESP_LOGI(TAG, "camera at %s", udp_ip_str(src));
+    ESP_LOGI(TAG, "camera at %s", transport_addr_ip(src));
 }
 
 static void begin_frame(uint16_t seq, uint8_t frags)
@@ -86,20 +85,20 @@ static void publish_frame(void)
 
 static void udp_server_task(void *arg)
 {
-    int sock = udp_open(VID_PORT);
+    int sock = transport_open(VID_PORT);
     if(sock < 0) {
         vTaskDelete(NULL);
         return;
     }
-    udp_set_rcvbuf(sock, 48 * 1024);
+    transport_set_rcvbuf(sock, 48 * 1024);
     s_sock = sock;
     ESP_LOGI(TAG, "UDP video server on port %d", VID_PORT);
 
     static uint8_t pkt[PKT_MAX];
 
     while(1) {
-        struct sockaddr_in src;
-        int n = udp_rx(sock, pkt, sizeof(pkt), &src);
+        transport_addr_t src;
+        int n = transport_recv(sock, pkt, sizeof(pkt), &src);
         if(n < 4) continue;
 
         uint16_t seq;
@@ -158,12 +157,12 @@ static void udp_server_task(void *arg)
 void stream_send_cmd(uint8_t cmd)
 {
     xSemaphoreTake(s_cam_mutex, portMAX_DELAY);
-    bool known = s_cam_known;
-    struct sockaddr_in addr = s_cam_addr;
+    bool             known = s_cam_known;
+    transport_addr_t addr  = s_cam_addr;
     xSemaphoreGive(s_cam_mutex);
 
     if(!known || s_sock < 0) return;
-    udp_tx(s_sock, &addr, &cmd, 1);
+    transport_send(s_sock, &addr, &cmd, 1);
 }
 
 bool stream_is_connected(void)

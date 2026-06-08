@@ -1,7 +1,7 @@
 #include "udp_stream.h"
 #include "camera.h"
 #include "motor_task.h"
-#include "udp.h"
+#include "transport.h"
 #include "rc_protocol.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -17,7 +17,7 @@ static const char *TAG = "udp_stream";
 
 static uint8_t s_pkt[PKT_MAX];
 
-static void send_frame(int sock, const struct sockaddr_in *dest,
+static void send_frame(int sock, const transport_addr_t *dest,
                         const uint8_t *buf, uint32_t len, uint16_t seq)
 {
     uint8_t  n_frags = (len <= FIRST_DATA) ? 1 : 1 + (len - FIRST_DATA + FRAG_SIZE - 1) / FRAG_SIZE;
@@ -44,31 +44,30 @@ static void send_frame(int sock, const struct sockaddr_in *dest,
         p    += chunk;
         sent += chunk;
 
-        udp_tx(sock, dest, s_pkt, p - s_pkt);
+        transport_send(sock, dest, s_pkt, p - s_pkt);
     }
 }
 
 static void drain_commands(int sock)
 {
     uint8_t cmd;
-    while(udp_try_recv(sock, &cmd, 1) == 1)
+    while(transport_try_recv(sock, &cmd, 1) == 1)
         motor_cmd_send(cmd);
 }
 
 static void udp_stream_task(void *arg)
 {
-    struct sockaddr_in dest = udp_addr(S3_IP, VID_PORT);
+    transport_addr_t dest = transport_make_addr(S3_IP, VID_PORT);
 
     int sock = -1;
     while(sock < 0) {
-        sock = udp_open(CMD_PORT);
+        sock = transport_open(CMD_PORT);
         if(sock < 0) {
             ESP_LOGE(TAG, "socket setup failed, retrying");
             vTaskDelay(pdMS_TO_TICKS(1000));
         }
     }
-    struct timeval tv = { .tv_sec = 1, .tv_usec = 0 };
-    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    transport_set_send_timeout(sock, 1);
     ESP_LOGI(TAG, "streaming to %s:%d, commands on port %d", S3_IP, VID_PORT, CMD_PORT);
 
     esp_task_wdt_add(NULL);
