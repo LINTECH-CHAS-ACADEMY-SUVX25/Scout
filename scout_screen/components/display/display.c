@@ -40,6 +40,9 @@ void display_clear_region(int x, int y, int w, int h)
         memset(fb + ((y + row) * SCREEN_W + x) * 2, 0, w * 2);
 }
 
+void display_backlight_on(void)  { wavesahre_rgb_lcd_bl_on(); }
+void display_backlight_off(void) { wavesahre_rgb_lcd_bl_off(); }
+
 void display_init(void)
 {
     s_touch = touch_gt911_init();

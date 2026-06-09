@@ -26,3 +26,6 @@ void  display_blit_region(int x, int y, int w, int h, const void *pixels);
 
 // Clears a w × h region at (x, y) to black in framebuffer 0.
 void  display_clear_region(int x, int y, int w, int h);
+
+void  display_backlight_on(void);
+void  display_backlight_off(void);
