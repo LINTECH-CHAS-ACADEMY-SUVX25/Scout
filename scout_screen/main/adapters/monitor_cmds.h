@@ -20,8 +20,14 @@ typedef struct {
     uint32_t free_psram;
 } monitor_diag_t;
 
+// Number of lines printed by monitor_cmd_stream — used by callers to reposition the cursor.
+#define STREAM_LINE_COUNT 12
+
+// Prints the STREAM stats block (STREAM_LINE_COUNT lines).
+void monitor_cmd_stream(const stream_stats_t *s);
+
 // Routes line to the matching command handler and prints the result.
+// STREAM is not handled here — callers must detect it and call monitor_cmd_stream directly.
 void monitor_dispatch(const char           *line,
                       const monitor_status_t *status,
-                      const stream_stats_t   *stream,
                       const monitor_diag_t   *diag);

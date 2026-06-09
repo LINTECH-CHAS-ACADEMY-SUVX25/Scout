@@ -30,7 +30,6 @@ static void monitor_run(void *arg)
     uart_console_println("\r\nScout monitor — type HELP");
     while(1) {
         if(!uart_console_read_line(line, sizeof(line))) continue;
-
         monitor_status_t status = {
             .uptime_s         = (uint32_t)(esp_timer_get_time() / 1000000),
             .free_heap        = esp_get_free_heap_size(),
@@ -38,15 +37,12 @@ static void monitor_run(void *arg)
             .sta_count        = wifi_ap_sta_count(),
             .stream_connected = frame_buf_is_connected(),
         };
-        stream_stats_t stream_stats;
-        frame_buf_get_stats(&stream_stats);
         monitor_diag_t diag = {
             .n_tasks    = uxTaskGetNumberOfTasks(),
             .min_heap   = esp_get_minimum_free_heap_size(),
             .free_int   = heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
             .free_psram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
         };
-
-        monitor_dispatch(line, &status, &stream_stats, &diag);
+        monitor_dispatch(line, &status, &diag);
     }
 }

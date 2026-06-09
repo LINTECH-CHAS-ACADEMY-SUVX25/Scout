@@ -17,6 +17,9 @@ void uart_console_printfln(const char *fmt, ...);
 // Reads one byte from UART0. Returns true if a byte was received within timeout_ms.
 bool uart_console_read_byte(uint8_t *ch, uint32_t timeout_ms);
 
+// Reads one byte without blocking. Returns the byte value, or -1 if nothing is available.
+int uart_console_try_getchar(void);
+
 // Reads one line from UART0 with echo and backspace handling.
 // Returns true when a complete line is ready in buf.
 bool uart_console_read_line(char *buf, size_t size);

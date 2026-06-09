@@ -43,6 +43,13 @@ bool uart_console_read_byte(uint8_t *ch, uint32_t timeout_ms)
     return uart_read_bytes(UART_NUM_0, ch, 1, pdMS_TO_TICKS(timeout_ms)) == 1;
 }
 
+int uart_console_try_getchar(void)
+{
+    uint8_t ch;
+    if(uart_read_bytes(UART_NUM_0, &ch, 1, 0) == 1) return (int)ch;
+    return -1;
+}
+
 bool uart_console_read_line(char *buf, size_t size)
 {
     static char s_line[64];

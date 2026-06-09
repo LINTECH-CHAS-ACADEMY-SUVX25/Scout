@@ -59,6 +59,8 @@ static uint64_t s_interval_sum;
 static uint32_t s_interval_idx;
 static uint32_t s_interval_count;
 static uint32_t s_prev_rx_ms;
+static uint32_t s_last_interval_ms;
+static uint32_t s_avg_interval_ms;
 static uint32_t s_rx_fps_tenths;
 
 static uint32_t s_disp_interval_hist[STAT_WINDOW];
@@ -66,6 +68,7 @@ static uint64_t s_disp_interval_sum;
 static uint32_t s_disp_interval_idx;
 static uint32_t s_disp_interval_count;
 static uint32_t s_prev_disp_ms;
+static uint32_t s_last_disp_interval_ms;
 static uint32_t s_disp_fps_tenths;
 
 static volatile int32_t s_last_blit_ms;
@@ -118,11 +121,13 @@ void frame_buf_publish(uint32_t len, int32_t transfer_ms)
 
     if(s_prev_rx_ms != 0) {
         uint32_t delta = s_last_rx_ms - s_prev_rx_ms;
+        s_last_interval_ms = delta;
         s_interval_sum -= s_interval_hist[s_interval_idx];
         s_interval_hist[s_interval_idx] = delta;
         s_interval_sum += delta;
         s_interval_idx = (s_interval_idx + 1) & (STAT_WINDOW - 1);
         if(s_interval_count < STAT_WINDOW) s_interval_count++;
+        s_avg_interval_ms = (uint32_t)(s_interval_sum / s_interval_count);
         // fps × 10 = 10000 × count / sum_ms  (avoids float, gives one decimal place)
         if(s_interval_sum > 0)
             s_rx_fps_tenths = (uint32_t)(10000ULL * s_interval_count / s_interval_sum);
@@ -181,6 +186,7 @@ void frame_buf_record_disp_frame(void)
     uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000);
     if(s_prev_disp_ms != 0) {
         uint32_t delta = now_ms - s_prev_disp_ms;
+        s_last_disp_interval_ms = delta;
         s_disp_interval_sum -= s_disp_interval_hist[s_disp_interval_idx];
         s_disp_interval_hist[s_disp_interval_idx] = delta;
         s_disp_interval_sum += delta;
@@ -232,6 +238,9 @@ void frame_buf_get_stats(stream_stats_t *out)
     out->avg_blit_ms      = s_avg_blit_ms;
     out->last_lvgl_ms     = s_last_lvgl_ms;
     out->avg_lvgl_ms      = s_avg_lvgl_ms;
+    out->last_interval_ms      = s_last_interval_ms;
+    out->avg_interval_ms       = s_avg_interval_ms;
+    out->last_disp_interval_ms = s_last_disp_interval_ms;
     out->rx_fps_tenths    = s_rx_fps_tenths;
     out->disp_fps_tenths  = s_disp_fps_tenths;
 }
