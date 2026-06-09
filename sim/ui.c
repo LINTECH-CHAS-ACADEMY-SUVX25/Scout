@@ -17,6 +17,10 @@
 
 #define JOY_RADIUS 52
 
+// Intro overlay loading bar
+#define INTRO_BAR_W 400
+#define INTRO_BAR_H 22
+
 // Layout — två lika breda sidofält flankerar en centrerad kameruta.
 // BAR_H är lika för topp och botten så kameran blir vertikalt symmetrisk.
 #define BAR_H       36
@@ -49,14 +53,18 @@
 #define COL_BADGE_BG   0x1B2230
 #define COL_BADGE_ON   0x10222A
 
-// UI-font — Press Start 2P (genererad C-font, se press_start_2p_8.c)
+// UI-font — Press Start 2P (genererade C-fonter, se respektive .c-fil)
 LV_FONT_DECLARE(press_start_2p_8);
-#define UI_FONT (&press_start_2p_8)
+LV_FONT_DECLARE(press_start_2p_24);
+#define UI_FONT   (&press_start_2p_8)
+#define LOGO_FONT (&press_start_2p_24)   // intro-loggan
 
 static volatile uint8_t s_cmd = CMD_STOP;
 
 // Widget handles
 
+static lv_obj_t *s_intro_overlay;
+static lv_obj_t *s_intro_bar_fill;
 static lv_obj_t *s_knob;
 static lv_obj_t *s_halo;
 static lv_obj_t *s_conn_dot;
@@ -432,6 +440,80 @@ static void lvgl_port_ui_init(void)
         badge_x += BADGE_STEP;
     }
     update_cmd_badges(CMD_STOP);
+}
+
+// Intro screen
+
+static void intro_bar_exec(void *var, int32_t val)
+{
+    lv_obj_set_width((lv_obj_t *)var, val);
+}
+
+static void intro_anim_done(lv_anim_t *a)
+{
+    (void)a;
+    lv_obj_del(s_intro_overlay);
+    s_intro_overlay = NULL;
+}
+
+void lvgl_port_intro_screen(void)
+{
+    // Overlay on the main screen — avoids lv_scr_load framebuffer issues
+    s_intro_overlay = lv_obj_create(lv_scr_act());
+    lv_obj_set_size(s_intro_overlay, SCREEN_W, SCREEN_H);
+    lv_obj_set_pos(s_intro_overlay, 0, 0);
+    lv_obj_set_style_bg_color(s_intro_overlay, lv_color_hex(COL_BG), 0);
+    lv_obj_set_style_bg_opa(s_intro_overlay, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(s_intro_overlay, 0, 0);
+    lv_obj_set_style_radius(s_intro_overlay, 0, 0);
+    lv_obj_set_style_pad_all(s_intro_overlay, 0, 0);
+    lv_obj_clear_flag(s_intro_overlay, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t *logo = lv_label_create(s_intro_overlay);
+    lv_label_set_text(logo, "SCOUT");
+    lv_obj_set_style_text_color(logo, lv_color_hex(COL_ACCENT), 0);
+    lv_obj_set_style_text_font(logo, LOGO_FONT, 0);
+    lv_obj_set_style_text_letter_space(logo, 6, 0);
+    lv_obj_align(logo, LV_ALIGN_CENTER, 0, -60);
+
+    lv_obj_t *track = lv_obj_create(s_intro_overlay);
+    lv_obj_set_size(track, INTRO_BAR_W, INTRO_BAR_H);
+    lv_obj_align(track, LV_ALIGN_CENTER, 0, 50);
+    lv_obj_set_style_bg_color(track, lv_color_hex(COL_BG), 0);
+    lv_obj_set_style_bg_opa(track, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(track, 2, 0);
+    lv_obj_set_style_border_color(track, lv_color_hex(COL_LINE), 0);
+    lv_obj_set_style_border_opa(track, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(track, 0, 0);
+    lv_obj_set_style_pad_all(track, 0, 0);
+    lv_obj_clear_flag(track, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+
+    s_intro_bar_fill = lv_obj_create(track);
+    lv_obj_set_size(s_intro_bar_fill, 0, INTRO_BAR_H);
+    lv_obj_set_pos(s_intro_bar_fill, 0, 0);
+    lv_obj_set_style_bg_color(s_intro_bar_fill, lv_color_hex(COL_ACCENT), 0);
+    lv_obj_set_style_bg_opa(s_intro_bar_fill, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(s_intro_bar_fill, 0, 0);
+    lv_obj_set_style_radius(s_intro_bar_fill, 0, 0);
+    lv_obj_set_style_pad_all(s_intro_bar_fill, 0, 0);
+    lv_obj_clear_flag(s_intro_bar_fill, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t *loading_lbl = lv_label_create(s_intro_overlay);
+    lv_label_set_text(loading_lbl, "LOADING...");
+    lv_obj_set_style_text_color(loading_lbl, lv_color_hex(COL_TEXT_MID), 0);
+    lv_obj_set_style_text_font(loading_lbl, UI_FONT, 0);
+    lv_obj_set_style_text_letter_space(loading_lbl, 4, 0);
+    lv_obj_align(loading_lbl, LV_ALIGN_CENTER, 0, 84);
+
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, s_intro_bar_fill);
+    lv_anim_set_exec_cb(&a, intro_bar_exec);
+    lv_anim_set_values(&a, 0, INTRO_BAR_W);
+    lv_anim_set_time(&a, 2500);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_set_ready_cb(&a, intro_anim_done);
+    lv_anim_start(&a);
 }
 
 // ===================== KOPIERA TILL HÄR =============================

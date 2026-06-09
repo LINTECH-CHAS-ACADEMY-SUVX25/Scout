@@ -30,7 +30,7 @@
 // Krävs för transform_zoom på knobben
 #define LV_USE_OBJ_TRANSFORM   1
 
-// Fonts
+// Fonts — montserrat_14 är LVGL:s default-font (kamerabox-etiketten i main.c)
 #define LV_FONT_MONTSERRAT_14  1
 
 // Logging

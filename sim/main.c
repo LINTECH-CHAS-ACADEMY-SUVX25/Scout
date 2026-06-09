@@ -21,6 +21,7 @@
 // UI byggd i ui.c
 void sim_ui_init(void);
 void lvgl_port_ui_update(bool connected);
+void lvgl_port_intro_screen(void);
 
 static SDL_Window   *s_win;
 static SDL_Renderer *s_ren;
@@ -110,7 +111,9 @@ static void lvgl_init(void)
 // (oftast med SDL_VIDEODRIVER=offscreen) för att fånga UI:t utan fönster.
 static void screenshot(const char *path)
 {
-    for(int i = 0; i < 5; i++) {
+    const char *ms = SDL_getenv("SIM_SHOT_MS");   // spola fram så här långt först
+    int budget = ms ? SDL_atoi(ms) : 100;
+    for(int t = 0; t < budget; t += 20) {
         lv_tick_inc(20);
         lv_timer_handler();
     }
@@ -129,6 +132,7 @@ int main(void)
 
     sim_ui_init();
     make_camera_box();
+    lvgl_port_intro_screen();
 
     const char *shot = SDL_getenv("SIM_SHOT");
     if(shot) {

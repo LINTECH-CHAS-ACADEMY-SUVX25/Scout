@@ -20,6 +20,15 @@ Tangenter i fönstret:
 
 Joysticken styrs med musen, precis som touch på enheten.
 
+Vid start spelas intro-overlayn (`lvgl_port_intro_screen`) i ~2,5 s och tar
+sedan bort sig själv och visar UI:t.
+
+Ändrar du `lv_conf.h` (t.ex. aktiverar en font): kör `make clean` först —
+LVGL-objekten spårar inte `lv_conf.h` och byggs annars inte om.
+
+Headless skärmdump: `SDL_VIDEODRIVER=offscreen SIM_SHOT=ut.bmp ./sim`. Lägg
+till `SIM_SHOT_MS=3000` för att spola fram förbi intron först.
+
 ## Så här hänger det ihop
 
 | Fil            | Roll                                                        |
@@ -29,6 +38,7 @@ Joysticken styrs med musen, precis som touch på enheten.
 | `lv_conf.h`    | PC-variant av enhetens `lv_conf.h`                          |
 | `sim_screen.h` | `SCREEN_W` / `SCREEN_H` (motsvarar `display.h` på enheten)  |
 | `press_start_2p_8.c`  | UI-fonten (genererad C-font, Press Start 2P 8px)    |
+| `press_start_2p_24.c` | Intro-loggans font (Press Start 2P 24px)            |
 
 ## Font
 
@@ -73,8 +83,8 @@ Driver-delen (`flush_cb`, touch, tick, `lvgl_port_init`,
 enheten respektive i `main.c` i simulatorn.
 
 När du flyttar över, kom ihåg att enheten också behöver:
-* `press_start_2p_8.c` i `components/lvgl_port/` (lägg till i komponentens
-  `CMakeLists.txt` `SRCS`)
+* `press_start_2p_8.c` och `press_start_2p_24.c` (intro-loggan) i
+  `components/lvgl_port/` (lägg till i komponentens `CMakeLists.txt` `SRCS`)
 * `LV_LVGL_H_INCLUDE_SIMPLE` definierad (annars `#include "lvgl/lvgl.h"` i
   fontfilen), eller justera fontfilens include
 * `CAM_W`/`CAM_H` → 480 i `rc_protocol.h` och bottombar-höjd 32→36 (BAR_H)
