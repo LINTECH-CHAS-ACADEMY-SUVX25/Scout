@@ -61,15 +61,19 @@ static void render_run(void *arg)
         }
         cam_cmd_send(c);
 
-        if(frame_buf_try_decode((uint8_t *)jpeg_canvas_get(), CAM_W * CAM_H * sizeof(uint16_t)))
-            has_frame = true;
+        bool new_frame = frame_buf_try_decode((uint8_t *)jpeg_canvas_get(),
+                                              CAM_W * CAM_H * sizeof(uint16_t));
+        if(new_frame) has_frame = true;
         if(has_frame) {
+            // Re-blit every loop so the camera region survives LVGL redraws, but only
+            // count a displayed frame when a new one was actually decoded — otherwise
+            // disp_fps measures the loop rate and spikes above the frame arrival rate.
             int64_t tb = esp_timer_get_time();
             display_blit_region(CAM_X, CAM_Y, CAM_W, CAM_H, jpeg_canvas_get());
             frame_buf_record_blit((int32_t)((esp_timer_get_time() - tb) / 1000));
-            frame_buf_record_disp_frame();
+            if(new_frame) frame_buf_record_disp_frame();
         }
 
-        vTaskDelay(pdMS_TO_TICKS(10));
+        //vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
