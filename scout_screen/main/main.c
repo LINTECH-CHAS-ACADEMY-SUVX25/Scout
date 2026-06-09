@@ -19,6 +19,7 @@ void app_main(void)
     lvgl_port_init();
     monitor_init();
     stream_init();
+    lvgl_port_intro_screen();
     render_init();
     vTaskDelete(NULL);
 }
