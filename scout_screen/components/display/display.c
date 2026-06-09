@@ -3,6 +3,7 @@
 #include "rgb_lcd_port.h"
 #include "esp_lcd_panel_rgb.h"
 #include "esp_lcd_panel_ops.h"
+#include <string.h>
 
 static esp_lcd_panel_handle_t s_panel;
 static void                  *s_fb[2];
@@ -21,6 +22,22 @@ bool display_read_touch(uint16_t *x, uint16_t *y)
     uint8_t cnt = 0;
     esp_lcd_touch_read_data(s_touch);
     return esp_lcd_touch_get_coordinates(s_touch, x, y, NULL, &cnt, 1);
+}
+
+void display_blit_region(int x, int y, int w, int h, const void *pixels)
+{
+    uint8_t *fb = (uint8_t *)s_fb[0];
+    for(int row = 0; row < h; row++)
+        memcpy(fb + ((y + row) * SCREEN_W + x) * 2,
+               (const uint8_t *)pixels + row * w * 2,
+               w * 2);
+}
+
+void display_clear_region(int x, int y, int w, int h)
+{
+    uint8_t *fb = (uint8_t *)s_fb[0];
+    for(int row = 0; row < h; row++)
+        memset(fb + ((y + row) * SCREEN_W + x) * 2, 0, w * 2);
 }
 
 void display_init(void)

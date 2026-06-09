@@ -2,8 +2,23 @@
 #include "esp_log.h"
 #include "esp_jpeg_dec.h"
 #include "esp_jpeg_enc.h"
+#include "esp_heap_caps.h"
+#include <assert.h>
 
 static const char *TAG = "jpeg";
+
+static uint16_t *s_canvas;
+
+void jpeg_init_canvas(uint16_t w, uint16_t h)
+{
+    s_canvas = heap_caps_aligned_alloc(16, (size_t)w * h * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+    assert(s_canvas);
+}
+
+uint16_t *jpeg_canvas_get(void)
+{
+    return s_canvas;
+}
 
 bool jpeg_decode_rgb565(const uint8_t *inbuf, int inbuf_len,
                         uint8_t *outbuf, size_t outbuf_size,

@@ -1,9 +1,10 @@
 #include "wifi_ap.h"
 #include "display.h"
-#include "ui.h"
+#include "lvgl_port.h"
 #include "monitor.h"
 #include "stream.h"
 #include "render.h"
+#include "watchdog.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
@@ -12,16 +13,13 @@ static const char *TAG = "screen";
 
 void app_main(void)
 {
+    watchdog_init();
     wifi_ap_start();
     display_init();
-    ui_init();
-    ESP_LOGI(TAG, "UI initialized");
+    lvgl_port_init();
     monitor_init();
     stream_init();
-    ESP_LOGI(TAG, "Stream task started");
     render_init();
-    ESP_LOGI(TAG, "Render task started");
-    ui_intro_screen();
-    ESP_LOGI(TAG, "Intro screen loaded");
+    lvgl_port_intro_screen();
     vTaskDelete(NULL);
 }

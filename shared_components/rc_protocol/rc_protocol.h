@@ -14,6 +14,12 @@
 #define CMD_LEFT     0x04
 #define CMD_RIGHT    0x08
 
+// Camera frame resolution — the cam crops the VGA (640x480) sensor frame to a centered
+// square via OV2640 windowing before sending (see scout_cam camera.c). Both nodes derive
+// buffer sizes and the screen blit region from these constants.
+#define CAM_W        480
+#define CAM_H        480
+
 // UDP video fragmentation — shared so cam and screen never drift apart
 #define FRAME_MAGIC  0xAB
 #define FRAG_SIZE    1460

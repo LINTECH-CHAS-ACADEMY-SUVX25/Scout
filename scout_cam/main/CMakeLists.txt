@@ -1,5 +1,6 @@
 idf_component_register(
-    SRCS "main.c" "wifi_sta.c" "udp_stream.c" "monitor.c" "telemetry.c"
-    INCLUDE_DIRS "."
-    REQUIRES esp_wifi nvs_flash esp_event esp_netif lwip rc_protocol udp camera motor_driver
+    SRCS "main.c" "stream.c" "motor.c"
+         "adapters/frag_tx.c" "adapters/motor_cmd.c"
+    INCLUDE_DIRS "." "adapters"
+    REQUIRES rc_protocol udp camera l298n wifi_sta watchdog
 )

@@ -3,6 +3,12 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+// Allocates a 16-byte-aligned PSRAM buffer sized for w * h RGB565 pixels.
+void      jpeg_init_canvas(uint16_t w, uint16_t h);
+
+// Returns the canvas buffer allocated by jpeg_init_canvas.
+uint16_t *jpeg_canvas_get(void);
+
 // Decode a JPEG image to RGB565 little-endian.
 // outbuf must be 16-byte aligned and large enough for width * height * 2 bytes.
 // Returns true on success; out_width / out_height are optional.

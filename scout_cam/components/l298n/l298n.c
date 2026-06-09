@@ -1,4 +1,4 @@
-#include "motor.h"
+#include "l298n.h"
 #include "rc_protocol.h"
 #include "driver/gpio.h"
 
@@ -9,7 +9,21 @@
 #define PIN_IN3  GPIO_NUM_14
 #define PIN_IN4  GPIO_NUM_15
 
-void motor_apply(uint8_t cmd)
+void l298n_init(void)
+{
+    gpio_config_t cfg = {
+        .pin_bit_mask = BIT64(PIN_IN1) | BIT64(PIN_IN2) |
+                        BIT64(PIN_IN3) | BIT64(PIN_IN4),
+        .mode         = GPIO_MODE_OUTPUT,
+        .pull_up_en   = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type    = GPIO_INTR_DISABLE,
+    };
+    ESP_ERROR_CHECK(gpio_config(&cfg));
+    l298n_apply(CMD_STOP);
+}
+
+void l298n_apply(uint8_t cmd)
 {
     bool fwd = cmd & CMD_FORWARD;
     bool bwd = cmd & CMD_BACKWARD;
@@ -34,18 +48,4 @@ void motor_apply(uint8_t cmd)
     gpio_set_level(PIN_IN2, in2);
     gpio_set_level(PIN_IN3, in3);
     gpio_set_level(PIN_IN4, in4);
-}
-
-void motor_init(void)
-{
-    gpio_config_t cfg = {
-        .pin_bit_mask = BIT64(PIN_IN1) | BIT64(PIN_IN2) |
-                        BIT64(PIN_IN3) | BIT64(PIN_IN4),
-        .mode         = GPIO_MODE_OUTPUT,
-        .pull_up_en   = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type    = GPIO_INTR_DISABLE,
-    };
-    ESP_ERROR_CHECK(gpio_config(&cfg));
-    motor_apply(CMD_STOP);
 }

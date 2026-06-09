@@ -37,6 +37,12 @@ void udp_set_rcvbuf(int sock, int bytes)
     setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &bytes, sizeof(bytes));
 }
 
+void udp_set_send_timeout(int sock, int seconds)
+{
+    struct timeval tv = { .tv_sec = seconds, .tv_usec = 0 };
+    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+}
+
 int udp_rx(int sock, void *buf, size_t len, struct sockaddr_in *src)
 {
     if(src) {
