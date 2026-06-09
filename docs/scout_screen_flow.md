@@ -11,12 +11,9 @@ flowchart LR
     B --> C[display_init]
     C --> D[lvgl_port_init]
     D --> E[monitor_init]
-    E --> F["xTaskCreate\nmonitor_run"]
-    F --> G[stream_init]
-    G --> H["xTaskCreatePinnedToCore\nstream_run · core 0"]
-    H --> I[render_init]
-    I --> J["xTaskCreatePinnedToCore\nrender_run · core 1"]
-    J --> K[vTaskDelete NULL]
+    E --> F[stream_init]
+    F --> G[render_init]
+    G --> H[vTaskDelete NULL]
 ```
 
 ## Task overview
