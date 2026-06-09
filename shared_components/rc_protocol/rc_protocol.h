@@ -14,6 +14,10 @@
 #define CMD_LEFT     0x04
 #define CMD_RIGHT    0x08
 
+// Camera frame resolution — must match esp32-camera capture size
+#define CAM_W        640
+#define CAM_H        480
+
 // UDP video fragmentation — shared so cam and screen never drift apart
 #define FRAME_MAGIC  0xAB
 #define FRAG_SIZE    1460
