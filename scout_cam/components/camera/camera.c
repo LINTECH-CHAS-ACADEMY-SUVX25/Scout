@@ -1,10 +1,23 @@
 #include "camera.h"
+#include "rc_protocol.h"
 #include "esp_camera.h"
 #include "esp_log.h"
 
 // Driver wrapper for the AI-Thinker ESP32-CAM (OV2640).
 // Hides esp_camera_fb_t from all task code — callers only see
 // a raw byte pointer via camera_capture / camera_release.
+
+// Centered crop of the VGA frame to CAM_W x CAM_H via OV2640 DSP windowing.
+// VGA (640x480) is produced in SVGA mode from an 800x600 sensor window (offset 0,0)
+// scaled 0.8x to 640x480. To crop the centered 480x480 at the same 0.8x scale:
+//   horizontal: 480 output ← 600-wide window, centered in 800 → offset_x=(800-600)/2=100
+//   vertical:   unchanged → 600-high window, offset_y=0, 480 output
+// All window/output dims must be divisible by 4.
+#define CROP_MODE_SVGA  1     // ov2640_sensor_mode_t: UXGA=0, SVGA=1, CIF=2
+#define CROP_OFFSET_X   100
+#define CROP_OFFSET_Y   0
+#define CROP_WIN_X      600
+#define CROP_WIN_Y      600
 
 static const char *TAG = "camera";
 
@@ -26,6 +39,22 @@ static const char *TAG = "camera";
 #define CAM_PIN_PCLK    22
 
 static camera_fb_t *s_fb;
+
+// Applies the centered CAM_W x CAM_H crop. Logs and leaves the sensor at VGA on failure —
+// a windowing error must not stop the camera from working.
+static void camera_apply_crop(void)
+{
+    sensor_t *s = esp_camera_sensor_get();
+    if(!s || !s->set_res_raw) {
+        ESP_LOGW(TAG, "sensor windowing unavailable — staying at VGA");
+        return;
+    }
+    int ret = s->set_res_raw(s, CROP_MODE_SVGA, 0, 0, 0,
+                             CROP_OFFSET_X, CROP_OFFSET_Y,
+                             CROP_WIN_X, CROP_WIN_Y,
+                             CAM_W, CAM_H, false, false);
+    if(ret != 0) ESP_LOGW(TAG, "set_res_raw failed (%d) — staying at VGA", ret);
+}
 
 void camera_init(void)
 {
@@ -53,7 +82,8 @@ void camera_init(void)
         .grab_mode    = CAMERA_GRAB_LATEST, // always get the newest frame, skip older ones
     };
     ESP_ERROR_CHECK(esp_camera_init(&config));
-    ESP_LOGI(TAG, "camera ready");
+    camera_apply_crop();
+    ESP_LOGI(TAG, "camera ready (%dx%d crop)", CAM_W, CAM_H);
 }
 
 bool camera_capture(const uint8_t **buf, size_t *len)
