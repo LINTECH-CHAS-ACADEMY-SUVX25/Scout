@@ -15,6 +15,9 @@ typedef struct {
     int32_t  avg_blit_ms;
     int32_t  last_lvgl_ms;
     int32_t  avg_lvgl_ms;
+    uint32_t last_interval_ms;      // ms since the previous complete frame arrived
+    uint32_t avg_interval_ms;       // rolling average of the receive interval
+    uint32_t last_disp_interval_ms; // ms since the previous frame was displayed
     uint32_t rx_fps_tenths;    // rate at which complete frames arrive from camera
     uint32_t disp_fps_tenths;  // rate at which frames are actually decoded and displayed
 } stream_stats_t;
