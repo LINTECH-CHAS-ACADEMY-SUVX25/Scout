@@ -35,7 +35,6 @@ static void render_run(void *arg)
 {
     uint8_t last_cmd      = CMD_STOP;
     bool    was_connected = false;
-    bool    has_frame     = false;
 
     watchdog_register();
 
@@ -61,9 +60,11 @@ static void render_run(void *arg)
         }
         cam_cmd_send(c);
 
-        if(frame_buf_try_decode((uint8_t *)jpeg_canvas_get(), CAM_W * CAM_H * sizeof(uint16_t)))
-            has_frame = true;
-        if(has_frame) {
+        // Only blit when a new frame was decoded. LVGL redraws just its dirty areas
+        // which don't overlap the camera region, so the last
+        // frame persists in the framebuffer between decodes — no need to re-blit.
+        if(frame_buf_try_decode((uint8_t *)jpeg_canvas_get(),
+                                CAM_W * CAM_H * sizeof(uint16_t))) {
             int64_t tb = esp_timer_get_time();
             display_blit_region(CAM_X, CAM_Y, CAM_W, CAM_H, jpeg_canvas_get());
             frame_buf_record_blit((int32_t)((esp_timer_get_time() - tb) / 1000));
