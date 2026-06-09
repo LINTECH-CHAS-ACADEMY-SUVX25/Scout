@@ -13,6 +13,8 @@
 // Connects LVGL to the Waveshare RGB LCD and GT911 touch controller.
 // Owns the full UI layout — widget creation, event callbacks, and rendering.
 
+static volatile uint8_t s_cmd = CMD_STOP;
+
 #define JOY_RADIUS 52
 
 // Intro overlay loading bar
