@@ -4,6 +4,7 @@
 #include "lvgl_port.h"
 #include "display.h"
 #include "jpeg.h"
+#include "watchdog.h"
 #include "rc_protocol.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -36,7 +37,11 @@ static void render_run(void *arg)
     bool    was_connected = false;
     bool    has_frame     = false;
 
+    watchdog_register();
+
     while(1) {
+        watchdog_reset();
+
         bool connected = frame_buf_is_connected();
         if(connected != was_connected) {
             lvgl_port_ui_update(connected);
