@@ -1,12 +1,15 @@
 #include "stream.h"
 #include "frame_buf.h"
+#include "screen_state.h"
 #include "cam_cmd.h"
 #include "frag_rx.h"
 #include "udp.h"
+#include "wifi_ap.h"
 #include "rc_protocol.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 
 // Task — UDP video receiver for the dashboard side.
 // Reassembles JPEG fragments from the camera into complete frames and hands them
@@ -36,13 +39,19 @@ static void stream_run(void *arg)
         struct sockaddr_in src;
         int n = udp_rx(sock, frame_buf_pkt(), PKT_MAX, &src);
 
+        screen_status.cam_connected = wifi_ap_sta_count() > 0;
+        screen_status.streaming     = frame_buf_is_streaming();
+
         uint32_t      frame_len;
         int32_t       transfer_ms;
         frag_result_t result = frag_rx(frame_buf_pkt(), n, &frame_len, &transfer_ms);
         if(result == FRAG_DISCARD) continue;
 
         cam_cmd_learn(&src);
-        if(result == FRAG_COMPLETE)
-            frame_buf_publish(frame_len, transfer_ms);
+        if(result == FRAG_COMPLETE) {
+            uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000);
+            frame_buf_publish(now_ms, frame_len);
+            screen_state_push_transfer(now_ms, frame_len, transfer_ms);
+        }
     }
 }

@@ -44,7 +44,7 @@ static void fmt_fps(char *buf, size_t size, uint32_t tenths)
         (unsigned long)(tenths / 10), (unsigned long)(tenths % 10));
 }
 
-static void stat_receive(const stream_stats_t *s)
+static void stat_receive(const screen_state_t *s)
 {
     char val[16];
     char avg[16];
@@ -52,51 +52,51 @@ static void stat_receive(const stream_stats_t *s)
     stat_header("Receive");
     stat_one("frames", s->frame_count);
 
-    snprintf(val, sizeof val, "%luB", (unsigned long)s->last_frame_bytes);
-    snprintf(avg, sizeof avg, "%luB", (unsigned long)s->avg_frame_bytes);
+    snprintf(val, sizeof val, "%ldB", (long)s->frame_bytes.last);
+    snprintf(avg, sizeof avg, "%ldB", (long)s->frame_bytes.avg);
     stat_row("frame size", val, avg);
 
-    snprintf(val, sizeof val, "%ldms", (long)s->last_transfer_ms);
-    snprintf(avg, sizeof avg, "%ldms", (long)s->avg_transfer_ms);
+    snprintf(val, sizeof val, "%ldms", (long)s->transfer.last);
+    snprintf(avg, sizeof avg, "%ldms", (long)s->transfer.avg);
     stat_row("transfer", val, avg);
 
-    snprintf(val, sizeof val, "%lums", (unsigned long)s->last_interval_ms);
-    snprintf(avg, sizeof avg, "%lums", (unsigned long)s->avg_interval_ms);
+    snprintf(val, sizeof val, "%ldms", (long)s->rx_interval.last);
+    snprintf(avg, sizeof avg, "%ldms", (long)s->rx_interval.avg);
     stat_row("frame gap", val, avg);
 
     // max fps = 1000 / frame gap — the ceiling the display rate can never exceed
-    uint32_t max_last = s->last_interval_ms ? 10000u / s->last_interval_ms : 0;
+    uint32_t max_last = s->rx_interval.last ? 10000u / (uint32_t)s->rx_interval.last : 0;
     fmt_fps(val, sizeof val, max_last);
     fmt_fps(avg, sizeof avg, s->rx_fps_tenths);
     stat_row("max fps", val, avg);
 }
 
-static void stat_render(const stream_stats_t *s)
+static void stat_render(const screen_state_t *s)
 {
     char val[16];
     char avg[16];
 
     stat_header("Render");
 
-    snprintf(val, sizeof val, "%ldms", (long)s->last_lvgl_ms);
-    snprintf(avg, sizeof avg, "%ldms", (long)s->avg_lvgl_ms);
+    snprintf(val, sizeof val, "%ldms", (long)s->lvgl.last);
+    snprintf(avg, sizeof avg, "%ldms", (long)s->lvgl.avg);
     stat_row("lvgl", val, avg);
 
-    snprintf(val, sizeof val, "%ldms", (long)s->last_decode_ms);
-    snprintf(avg, sizeof avg, "%ldms", (long)s->avg_decode_ms);
+    snprintf(val, sizeof val, "%ldms", (long)s->decode.last);
+    snprintf(avg, sizeof avg, "%ldms", (long)s->decode.avg);
     stat_row("decode", val, avg);
 
-    snprintf(val, sizeof val, "%ldms", (long)s->last_blit_ms);
-    snprintf(avg, sizeof avg, "%ldms", (long)s->avg_blit_ms);
+    snprintf(val, sizeof val, "%ldms", (long)s->blit.last);
+    snprintf(avg, sizeof avg, "%ldms", (long)s->blit.avg);
     stat_row("blit", val, avg);
 
-    uint32_t disp_last = s->last_disp_interval_ms ? 10000u / s->last_disp_interval_ms : 0;
+    uint32_t disp_last = s->disp.last ? 10000u / (uint32_t)s->disp.last : 0;
     fmt_fps(val, sizeof val, disp_last);
     fmt_fps(avg, sizeof avg, s->disp_fps_tenths);
     stat_row("fps", val, avg);
 }
 
-void monitor_cmd_stream(const stream_stats_t *s)
+void monitor_cmd_stream(const screen_state_t *s)
 {
     uart_console_println("=== STREAM ===");
     stat_receive(s);
@@ -116,13 +116,13 @@ static void cmd_stream_live(void)
 {
     char up_seq[12];
     snprintf(up_seq, sizeof(up_seq), "\033[%dA", STREAM_LINE_COUNT);
-    stream_stats_t stats;
-    frame_buf_get_stats(&stats);
+    screen_state_t stats;
+    screen_state_get(&stats);
     monitor_cmd_stream(&stats);
     while(1) {
         vTaskDelay(pdMS_TO_TICKS(500));
         if(uart_console_try_getchar() == 'q') break;
-        frame_buf_get_stats(&stats);
+        screen_state_get(&stats);
         uart_console_write(up_seq);
         uart_console_write("\033[J");
         monitor_cmd_stream(&stats);
