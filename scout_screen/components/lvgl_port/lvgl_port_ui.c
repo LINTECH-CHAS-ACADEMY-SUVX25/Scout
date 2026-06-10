@@ -10,7 +10,9 @@
 // (sim/), so it must stay free of ESP-IDF and FreeRTOS headers. The simulator
 // provides its own display.h with SCREEN_W/SCREEN_H.
 
-#define JOY_RADIUS 52
+// Max knob offset from centre — base half (65) minus halo half (31), so
+// neither the knob nor its halo ever leaves the 130px joystick frame.
+#define JOY_RADIUS 34
 
 // Intro overlay loading bar
 #define INTRO_BAR_W 400
@@ -57,7 +59,7 @@ LV_FONT_DECLARE(press_start_2p_24);
 #define UI_FONT   (&press_start_2p_8)
 #define LOGO_FONT (&press_start_2p_24)   // intro logo
 
-static volatile uint8_t s_cmd = CMD_STOP;
+static volatile uint8_t s_cmd = CMD_STOP; 
 
 // Widget handles
 
@@ -331,7 +333,7 @@ void lvgl_port_ui_init(void)
 
     lv_obj_t *base = lv_obj_create(left);
     lv_obj_set_size(base, 130, 130);
-    lv_obj_set_pos(base, (SIDE_W - 130) / 2, CONTENT_H - 180);
+    lv_obj_set_pos(base, (SIDE_W - 130) / 2, CONTENT_H - 152);
     lv_obj_set_style_radius(base, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_color(base, lv_color_hex(COL_BG), 0);
     lv_obj_set_style_bg_opa(base, LV_OPA_COVER, 0);
@@ -406,7 +408,7 @@ void lvgl_port_ui_init(void)
     for(int i = 0; i < 5; i++) {
         lv_obj_t *badge = lv_obj_create(left);
         lv_obj_set_size(badge, BADGE_W, BADGE_H);
-        lv_obj_set_pos(badge, badge_x, CONTENT_H - 38);
+        lv_obj_set_pos(badge, badge_x, CONTENT_H - 190);
         lv_obj_set_style_radius(badge, 3, 0);
         lv_obj_set_style_bg_color(badge, lv_color_hex(COL_BADGE_BG), 0);
         lv_obj_set_style_bg_opa(badge, LV_OPA_COVER, 0);

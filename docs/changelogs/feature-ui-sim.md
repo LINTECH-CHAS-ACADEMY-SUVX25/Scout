@@ -32,6 +32,11 @@ helt — ser det rätt ut i simulatorn är enhetskoden redan uppdaterad.
 - `sim/Makefile` bygger de delade filerna under `build/port/`
 - `sim/README.md` omskriven — beskriver delad källfil i stället för
   kopiera-tillbaka-flödet
+- Badge-raden (FWD/BWD/STP/LFT/RGT) flyttad ovanför joysticken, direkt
+  under JOYSTICK-rubriken; joystickbasen nedflyttad till frigjorda ytan
+- `JOY_RADIUS` 52 → 34 så att varken knoben (46 px) eller halon (62 px)
+  hamnar utanför joystickramen (130 px) vid fullt utslag —
+  kommandotrösklarna (±15) opåverkade
 
 ## Borttaget
 
