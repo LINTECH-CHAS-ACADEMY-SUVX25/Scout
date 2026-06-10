@@ -4,6 +4,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 
 // Shared camera address and socket for the command channel.
 // The stream task learns the camera IP from incoming video packets and writes it here;
@@ -47,4 +48,21 @@ void cam_cmd_send(uint8_t cmd)
 
     if(!known || s_sock < 0) return;
     udp_tx(s_sock, &addr, &cmd, 1);
+}
+
+void cam_cmd_send_throttled(uint8_t cmd)
+{
+    static uint8_t s_last_cmd    = CMD_STOP;
+    static int64_t s_last_cmd_us = 0;
+
+    int64_t now_us = esp_timer_get_time();
+    if(cmd != s_last_cmd) {
+        ESP_LOGD(TAG, "RC cmd: 0x%02x", cmd);
+        s_last_cmd    = cmd;
+        s_last_cmd_us = now_us;
+        cam_cmd_send(cmd);
+    } else if(now_us - s_last_cmd_us >= 200 * 1000) {
+        cam_cmd_send(cmd);
+        s_last_cmd_us = now_us;
+    }
 }

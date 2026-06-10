@@ -1,5 +1,6 @@
 #include "render.h"
 #include "frame_buf.h"
+#include "screen_state.h"
 #include "cam_cmd.h"
 #include "lvgl_port.h"
 #include "display.h"
@@ -9,8 +10,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
-#include "esp_timer.h"
-#include <inttypes.h>
 
 // Task — drives the display on core 1.
 // Each tick: updates LVGL, renders the LVGL frame, sends the current RC command,
@@ -21,64 +20,57 @@
 #define CAM_Y  ((SCREEN_H - CAM_H) / 2)
 
 static const char *TAG = "render";
+static screen_tick_t  s_tick;
 
 static void render_run(void *arg);
 
 void render_init(void)
 {
     jpeg_init_canvas(CAM_W, CAM_H);
+    screen_state_render_tick_init(&s_tick);
     xTaskCreatePinnedToCore(render_run, "render", 8192, NULL, 4, NULL, 1);
     ESP_LOGI(TAG, "canvas %dx%d allocated", CAM_W, CAM_H);
 }
 
 static void render_run(void *arg)
 {
-    uint8_t last_cmd      = CMD_STOP;
-    bool    was_connected = false;
-    int64_t last_cmd_us   = 0;
-    int32_t lvgl_acc_ms   = 0;
+    bool was_connected = false;
 
     watchdog_register();
 
     while(1) {
         watchdog_reset();
+        screen_state_tick(&s_tick);
 
-        bool connected = frame_buf_is_connected();
-        if(connected != was_connected) {
-            lvgl_port_ui_update(connected);
-            if(!connected) display_clear_region(CAM_X, CAM_Y, CAM_W, CAM_H);
+        bool cam_connected = screen_status.cam_connected;
+        if(cam_connected != was_connected) {
+            lvgl_port_ui_update(cam_connected);
+            // TODO: trigger LVGL disconnected scene over camera region
         }
-        was_connected = connected;
+        was_connected = cam_connected;
 
-        int64_t t = esp_timer_get_time();
         lvgl_port_render_frame();
-        lvgl_acc_ms += (int32_t)((esp_timer_get_time() - t) / 1000);
+        screen_state_tick_split(&s_tick, &s_tick.lvgl);
 
-        uint8_t c   = lvgl_port_get_cmd();
-        int64_t now = esp_timer_get_time();
-        if(c != last_cmd) {
-            ESP_LOGD(TAG, "RC cmd: 0x%02x", c);
-            last_cmd = c;
-            cam_cmd_send(c);
-            last_cmd_us = now;
-        } else if(now - last_cmd_us >= 200000) {
-            cam_cmd_send(c);
-            last_cmd_us = now;
+        // TODO: return x/y joystick values (-255..255) and map to CMD + PWM strength
+        cam_cmd_send_throttled(lvgl_port_get_cmd());
+
+        // Only blit when a new frame was decoded. LVGL redraws just its dirty areas which don't overlap the camera region
+        const uint8_t *src;
+        uint32_t       src_len;
+        if(frame_buf_try_acquire(&src, &src_len)) {
+            bool ok = jpeg_decode_rgb565(src, (int)src_len,
+                                         (uint8_t *)jpeg_canvas_get(),
+                                         CAM_W * CAM_H * sizeof(uint16_t), NULL, NULL);
+            screen_state_tick_split(&s_tick, &s_tick.decode);
+            frame_buf_release();
+
+            if(ok) {
+                display_blit_region(CAM_X, CAM_Y, CAM_W, CAM_H, jpeg_canvas_get());
+                screen_state_tick_split(&s_tick, &s_tick.blit);
+            }
         }
 
-        // Only blit when a new frame was decoded. LVGL redraws just its dirty areas
-        // which don't overlap the camera region, so the last
-        // frame persists in the framebuffer between decodes — no need to re-blit.
-        if(frame_buf_try_decode((uint8_t *)jpeg_canvas_get(),
-                                CAM_W * CAM_H * sizeof(uint16_t))) {
-            int64_t tb = esp_timer_get_time();
-            display_blit_region(CAM_X, CAM_Y, CAM_W, CAM_H, jpeg_canvas_get());
-            frame_buf_record_blit((int32_t)((esp_timer_get_time() - tb) / 1000));
-            frame_buf_record_lvgl(lvgl_acc_ms);
-            lvgl_acc_ms = 0;
-            frame_buf_record_disp_frame();
-        }
-
-        vTaskDelay(connected ? 1 : pdMS_TO_TICKS(20));
+        vTaskDelay(screen_status.streaming ? 1 : pdMS_TO_TICKS(20));
     }
 }
