@@ -22,14 +22,17 @@ Tangenter i fönstret:
 
 Joysticken styrs med musen, precis som touch på enheten.
 
-Vid start spelas intro-overlayn (`lvgl_port_intro_screen`) i ~2,5 s och tar
-sedan bort sig själv och visar UI:t.
+Vid start visas intro-overlayn (`lvgl_port_intro_screen`) med boot-stegen
+WIFI → MONITOR → STREAM → READY. På enheten kommer stegen från `app_main`
+mellan de riktiga init-anropen; simulatorn fejkar dem med 1 s mellanrum
+(`INTRO_STEP_MS` i `main.c`). 1,2 s efter sista steget tar overlayn bort
+sig själv och visar UI:t — totalt ~5,2 s i simulatorn.
 
 Ändrar du `lv_conf.h` (t.ex. aktiverar en font): kör `make clean` först —
 LVGL-objekten spårar inte `lv_conf.h` och byggs annars inte om.
 
 Headless skärmdump: `SDL_VIDEODRIVER=offscreen SIM_SHOT=ut.bmp ./sim`. Lägg
-till `SIM_SHOT_MS=3000` för att spola fram förbi intron först.
+till `SIM_SHOT_MS=5500` för att spola fram förbi intron först.
 
 ## Så här hänger det ihop
 
@@ -45,7 +48,7 @@ Delade filer som kompileras från `scout_screen/components/lvgl_port/`:
 |----------------|-------------------------------------------------------------|
 | `lvgl_port_ui.c` | Hela UI-layouten — samma fil som enheten kompilerar       |
 | `press_start_2p_8.c`  | UI-fonten (genererad C-font, Press Start 2P 8px)    |
-| `press_start_2p_24.c` | Intro-loggans font (Press Start 2P 24px)            |
+| `press_start_2p_96.c` | Intro-loggans font (96px, endast mellanslag + A–Z)  |
 
 ## Font
 

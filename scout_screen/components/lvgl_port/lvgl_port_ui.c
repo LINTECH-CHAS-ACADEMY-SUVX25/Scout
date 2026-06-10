@@ -14,9 +14,13 @@
 // neither the knob nor its halo ever leaves the 130px joystick frame.
 #define JOY_RADIUS 34
 
-// Intro overlay loading bar
-#define INTRO_BAR_W 400
-#define INTRO_BAR_H 22
+// Intro overlay loading bar — slim rounded track with a gradient fill.
+// The fill sits inside the track's 1px border + 2px padding (3px inset/side).
+#define INTRO_BAR_W   440
+#define INTRO_BAR_H   14
+#define INTRO_FILL_W  (INTRO_BAR_W - 6)
+#define INTRO_FILL_H  (INTRO_BAR_H - 6)
+#define INTRO_HOLD_MS 1200   // how long the finished bar stays before the overlay closes
 
 // Layout — a left sidebar flanks the centred camera area. BAR_H is the same
 // for top and bottom so the camera sits vertically symmetric.
@@ -42,6 +46,7 @@
 #define COL_PANEL      0x141A23
 #define COL_LINE       0x232B36
 #define COL_ACCENT     0x22D3EE
+#define COL_ACCENT_DEEP 0x0891B2   // gradient start for the loading fill
 #define COL_TEXT_HI    0xE6EDF3
 #define COL_TEXT_MID   0x9BA7B4
 #define COL_TEXT_LO    0x5C6773
@@ -53,11 +58,12 @@
 #define XSTR(x) STR(x)
 #define STR(x)  #x
 
-// UI font — Press Start 2P (generated C fonts, see the respective .c files)
+// UI font — Press Start 2P (generated C fonts, see the respective .c files).
+// The 96px logo font only contains space + A-Z to keep its size down.
 LV_FONT_DECLARE(press_start_2p_8);
-LV_FONT_DECLARE(press_start_2p_24);
+LV_FONT_DECLARE(press_start_2p_96);
 #define UI_FONT   (&press_start_2p_8)
-#define LOGO_FONT (&press_start_2p_24)   // intro logo
+#define LOGO_FONT (&press_start_2p_96)   // intro logo
 
 static volatile uint8_t s_cmd = CMD_STOP; 
 
@@ -65,6 +71,10 @@ static volatile uint8_t s_cmd = CMD_STOP;
 
 static lv_obj_t *s_intro_overlay;
 static lv_obj_t *s_intro_bar_fill;
+static lv_obj_t *s_intro_status;
+static lv_obj_t *s_intro_pct;
+static uint8_t   s_intro_total;
+static uint8_t   s_intro_step;
 static lv_obj_t *s_knob;
 static lv_obj_t *s_halo;
 static lv_obj_t *s_conn_dot;
@@ -115,9 +125,10 @@ static lv_obj_t *make_sidebar(void)
 // Section header with a cyan accent mark on the left.
 static void make_section_hdr(lv_obj_t *parent, const char *text, int32_t y)
 {
+    // y-3 centres the 14px mark on the 8px text's midline (y+4)
     lv_obj_t *mark = make_obj(parent);
     lv_obj_set_size(mark, 3, 14);
-    lv_obj_set_pos(mark, PAD, y + 1);
+    lv_obj_set_pos(mark, PAD, y - 3);
     lv_obj_set_style_radius(mark, 1, 0);
     lv_obj_set_style_bg_color(mark, lv_color_hex(COL_ACCENT), 0);
     lv_obj_set_style_bg_opa(mark, LV_OPA_COVER, 0);
@@ -226,16 +237,12 @@ static void joy_event(lv_event_t *e)
     }
 }
 
-// Intro animation callbacks
+// Intro close timer — one-shot, fires after the last init step so the full
+// bar stays visible a moment. Runs inside the render loop's lv_timer_handler.
 
-static void intro_bar_exec(void *var, int32_t val)
+static void intro_close_cb(lv_timer_t *t)
 {
-    lv_obj_set_width((lv_obj_t *)var, val);
-}
-
-static void intro_anim_done(lv_anim_t *a)
-{
-    (void)a;
+    (void)t;
     lv_obj_del(s_intro_overlay);
     s_intro_overlay = NULL;
 }
@@ -434,8 +441,11 @@ void lvgl_port_ui_update(bool connected)
     lv_label_set_text(s_conn_label, connected ? "connected" : "waiting...");
 }
 
-void lvgl_port_intro_screen(void)
+void lvgl_port_intro_screen(uint8_t total_steps)
 {
+    s_intro_total = total_steps ? total_steps : 1;
+    s_intro_step  = 0;
+
     // Overlay on the main screen — avoids lv_scr_load framebuffer issues
     s_intro_overlay = lv_obj_create(lv_scr_act());
     lv_obj_set_size(s_intro_overlay, SCREEN_W, SCREEN_H);
@@ -456,42 +466,67 @@ void lvgl_port_intro_screen(void)
 
     lv_obj_t *track = lv_obj_create(s_intro_overlay);
     lv_obj_set_size(track, INTRO_BAR_W, INTRO_BAR_H);
-    lv_obj_align(track, LV_ALIGN_CENTER, 0, 50);
-    lv_obj_set_style_bg_color(track, lv_color_hex(COL_BG), 0);
+    lv_obj_align(track, LV_ALIGN_CENTER, 0, 44);
+    lv_obj_set_style_bg_color(track, lv_color_hex(COL_PANEL), 0);
     lv_obj_set_style_bg_opa(track, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(track, 2, 0);
+    lv_obj_set_style_border_width(track, 1, 0);
     lv_obj_set_style_border_color(track, lv_color_hex(COL_LINE), 0);
     lv_obj_set_style_border_opa(track, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(track, 0, 0);
-    lv_obj_set_style_pad_all(track, 0, 0);
+    lv_obj_set_style_radius(track, INTRO_BAR_H / 2, 0);
+    lv_obj_set_style_pad_all(track, 2, 0);
     lv_obj_clear_flag(track, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
 
     s_intro_bar_fill = lv_obj_create(track);
-    lv_obj_set_size(s_intro_bar_fill, 0, INTRO_BAR_H);
+    lv_obj_set_size(s_intro_bar_fill, 0, INTRO_FILL_H);
     lv_obj_set_pos(s_intro_bar_fill, 0, 0);
-    lv_obj_set_style_bg_color(s_intro_bar_fill, lv_color_hex(COL_ACCENT), 0);
+    lv_obj_set_style_radius(s_intro_bar_fill, INTRO_FILL_H / 2, 0);
+    lv_obj_set_style_bg_color(s_intro_bar_fill, lv_color_hex(COL_ACCENT_DEEP), 0);
+    lv_obj_set_style_bg_grad_color(s_intro_bar_fill, lv_color_hex(COL_ACCENT), 0);
+    lv_obj_set_style_bg_grad_dir(s_intro_bar_fill, LV_GRAD_DIR_HOR, 0);
     lv_obj_set_style_bg_opa(s_intro_bar_fill, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(s_intro_bar_fill, 0, 0);
-    lv_obj_set_style_radius(s_intro_bar_fill, 0, 0);
     lv_obj_set_style_pad_all(s_intro_bar_fill, 0, 0);
     lv_obj_clear_flag(s_intro_bar_fill, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
 
-    lv_obj_t *loading_lbl = lv_label_create(s_intro_overlay);
-    lv_label_set_text(loading_lbl, "LOADING...");
-    lv_obj_set_style_text_color(loading_lbl, lv_color_hex(COL_TEXT_MID), 0);
-    lv_obj_set_style_text_font(loading_lbl, UI_FONT, 0);
-    lv_obj_set_style_text_letter_space(loading_lbl, 4, 0);
-    lv_obj_align(loading_lbl, LV_ALIGN_CENTER, 0, 84);
+    // Status left-aligned and percentage right-aligned under the bar. Both
+    // labels get a fixed width and text alignment so changing text keeps the
+    // edges anchored without re-aligning.
+    s_intro_status = lv_label_create(s_intro_overlay);
+    lv_label_set_text(s_intro_status, "STARTING");
+    lv_obj_set_style_text_color(s_intro_status, lv_color_hex(COL_TEXT_MID), 0);
+    lv_obj_set_style_text_font(s_intro_status, UI_FONT, 0);
+    lv_obj_set_style_text_letter_space(s_intro_status, 4, 0);
+    lv_obj_set_width(s_intro_status, 240);
+    lv_obj_set_style_text_align(s_intro_status, LV_TEXT_ALIGN_LEFT, 0);
+    lv_obj_align(s_intro_status, LV_ALIGN_CENTER, -(INTRO_BAR_W / 2) + 122, 72);
 
-    lv_anim_t a;
-    lv_anim_init(&a);
-    lv_anim_set_var(&a, s_intro_bar_fill);
-    lv_anim_set_exec_cb(&a, intro_bar_exec);
-    lv_anim_set_values(&a, 0, INTRO_BAR_W);
-    lv_anim_set_time(&a, 2500);
-    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
-    lv_anim_set_ready_cb(&a, intro_anim_done);
-    lv_anim_start(&a);
+    s_intro_pct = lv_label_create(s_intro_overlay);
+    lv_label_set_text(s_intro_pct, "0%");
+    lv_obj_set_style_text_color(s_intro_pct, lv_color_hex(COL_TEXT_HI), 0);
+    lv_obj_set_style_text_font(s_intro_pct, UI_FONT, 0);
+    lv_obj_set_style_text_letter_space(s_intro_pct, 2, 0);
+    lv_obj_set_width(s_intro_pct, 80);
+    lv_obj_set_style_text_align(s_intro_pct, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_align(s_intro_pct, LV_ALIGN_CENTER, (INTRO_BAR_W / 2) - 40, 72);
+}
+
+void lvgl_port_intro_step(const char *label)
+{
+    if(s_intro_overlay == NULL) return;
+
+    if(s_intro_step < s_intro_total) s_intro_step++;
+    lv_label_set_text(s_intro_status, label);
+    lv_label_set_text_fmt(s_intro_pct, "%d%%", 100 * s_intro_step / s_intro_total);
+    lv_obj_set_width(s_intro_bar_fill, INTRO_FILL_W * s_intro_step / s_intro_total);
+
+    if(s_intro_step == s_intro_total) {
+        lv_timer_t *t = lv_timer_create(intro_close_cb, INTRO_HOLD_MS, NULL);
+        lv_timer_set_repeat_count(t, 1);
+    }
+
+    // Render directly — during boot the render loop is not running yet,
+    // so this is what puts the step on screen while its init call blocks.
+    lv_refr_now(lv_disp_get_default());
 }
 
 uint8_t lvgl_port_get_cmd(void) { return s_cmd; }

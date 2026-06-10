@@ -14,12 +14,22 @@ static const char *TAG = "screen";
 void app_main(void)
 {
     watchdog_init();
-    wifi_ap_start();
     display_init();
     lvgl_port_init();
+
+    lvgl_port_intro_screen(4);
+
+    lvgl_port_intro_step("WIFI");
+    wifi_ap_start();
+
+    lvgl_port_intro_step("MONITOR");
     monitor_init();
+    
+    lvgl_port_intro_step("STREAM");
     stream_init();
-    lvgl_port_intro_screen();
+    
+    lvgl_port_intro_step("READY");
     render_init();
+
     vTaskDelete(NULL);
 }

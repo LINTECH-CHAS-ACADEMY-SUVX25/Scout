@@ -48,6 +48,21 @@ static void mouse_read_cb(lv_indev_drv_t *drv, lv_indev_data_t *data)
                         ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
 }
 
+// Fejkade init-steg för intron — på enheten kommer de från app_main
+// mellan de riktiga init-anropen. Samma antal steg som enheten visar.
+#define INTRO_STEPS     4
+#define INTRO_STEP_MS   1000
+
+static void fake_intro_steps(uint32_t elapsed_ms)
+{
+    static const char *labels[INTRO_STEPS] = { "WIFI", "MONITOR", "STREAM", "READY" };
+    static int next = 0;
+    if(next < INTRO_STEPS && elapsed_ms >= (uint32_t)INTRO_STEP_MS * (next + 1)) {
+        lvgl_port_intro_step(labels[next]);
+        next++;
+    }
+}
+
 // Referensram för kamerarutan — finns bara i simulatorn.
 static void make_camera_box(void)
 {
@@ -110,6 +125,7 @@ static void screenshot(const char *path)
     const char *ms = SDL_getenv("SIM_SHOT_MS");   // spola fram så här långt först
     int budget = ms ? SDL_atoi(ms) : 100;
     for(int t = 0; t < budget; t += 20) {
+        fake_intro_steps((uint32_t)t);
         lv_tick_inc(20);
         lv_timer_handler();
     }
@@ -128,7 +144,7 @@ int main(void)
 
     lvgl_port_ui_init();
     make_camera_box();
-    lvgl_port_intro_screen();
+    lvgl_port_intro_screen(INTRO_STEPS);
 
     const char *shot = SDL_getenv("SIM_SHOT");
     if(shot) {
@@ -139,7 +155,8 @@ int main(void)
 
     bool running   = true;
     bool connected = false;
-    uint32_t last  = SDL_GetTicks();
+    uint32_t start = SDL_GetTicks();
+    uint32_t last  = start;
 
     while(running) {
         SDL_Event e;
@@ -158,6 +175,7 @@ int main(void)
         }
 
         uint32_t now = SDL_GetTicks();
+        fake_intro_steps(now - start);
         lv_tick_inc(now - last);
         last = now;
         lv_timer_handler();

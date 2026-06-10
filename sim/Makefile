@@ -17,7 +17,7 @@ LDFLAGS := $(shell sdl2-config --libs) -lm
 
 LVGL_SRC := $(shell find $(LVGL)/src -name '*.c')
 LVGL_OBJ := $(patsubst $(LVGL)/%.c,$(BUILD)/lvgl/%.o,$(LVGL_SRC))
-PORT_SRC := $(PORT)/lvgl_port_ui.c $(PORT)/press_start_2p_8.c $(PORT)/press_start_2p_24.c
+PORT_SRC := $(PORT)/lvgl_port_ui.c $(PORT)/press_start_2p_8.c $(PORT)/press_start_2p_96.c
 PORT_OBJ := $(patsubst $(PORT)/%.c,$(BUILD)/port/%.o,$(PORT_SRC))
 APP_SRC  := $(wildcard *.c)
 APP_OBJ  := $(patsubst %.c,$(BUILD)/%.o,$(APP_SRC))
