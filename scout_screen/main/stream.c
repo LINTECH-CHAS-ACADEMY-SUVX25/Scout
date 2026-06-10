@@ -9,14 +9,14 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
-#include "esp_timer.h"
 
 // Task — UDP video receiver for the dashboard side.
 // Reassembles JPEG fragments from the camera into complete frames and hands them
 // to the render task through ping-pong buffers in frame_buf.
 // Camera IP is learned from the first incoming packet's source address.
 
-static const char *TAG = "stream";
+static const char    *TAG    = "stream";
+static screen_tick_t  s_tick = {0};
 
 static void stream_run(void *arg);
 
@@ -24,6 +24,7 @@ void stream_init(void)
 {
     frame_buf_init();
     cam_cmd_init();
+    screen_state_stream_tick_init(&s_tick);
     xTaskCreatePinnedToCore(stream_run, "udp_server", 4096, NULL, 5, NULL, 0);
 }
 
@@ -36,11 +37,13 @@ static void stream_run(void *arg)
     ESP_LOGI(TAG, "UDP video server on port %d", VID_PORT);
 
     while(1) {
+        screen_state_tick(&s_tick);
+
         struct sockaddr_in src;
         int n = udp_rx(sock, frame_buf_pkt(), PKT_MAX, &src);
 
         screen_status.cam_connected = wifi_ap_sta_count() > 0;
-        screen_status.streaming     = frame_buf_is_streaming();
+        screen_status.streaming     = screen_state_is_streaming();
 
         uint32_t      frame_len;
         int32_t       transfer_ms;
@@ -49,9 +52,11 @@ static void stream_run(void *arg)
 
         cam_cmd_learn(&src);
         if(result == FRAG_COMPLETE) {
-            uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000);
-            frame_buf_publish(now_ms, frame_len);
-            screen_state_push_transfer(now_ms, frame_len, transfer_ms);
+            s_tick.transfer.ms   = transfer_ms;
+            s_tick.transfer.done = true;
+            s_tick.bytes.ms      = (int32_t)frame_len;
+            s_tick.bytes.done    = true;
+            frame_buf_publish(frame_len);
         }
     }
 }

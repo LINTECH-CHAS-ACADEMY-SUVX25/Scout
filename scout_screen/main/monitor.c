@@ -1,6 +1,5 @@
 #include "monitor.h"
 #include "monitor_cmds.h"
-#include "frame_buf.h"
 #include "wifi_ap.h"
 #include "uart_console.h"
 #include "freertos/FreeRTOS.h"
@@ -35,7 +34,7 @@ static void monitor_run(void *arg)
             .free_heap        = esp_get_free_heap_size(),
             .free_psram       = heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
             .sta_count        = wifi_ap_sta_count(),
-            .stream_connected = frame_buf_is_connected(),
+            .stream_connected = screen_state_is_streaming(),
         };
         monitor_diag_t diag = {
             .n_tasks    = uxTaskGetNumberOfTasks(),

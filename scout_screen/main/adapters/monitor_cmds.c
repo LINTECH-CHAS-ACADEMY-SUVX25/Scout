@@ -69,6 +69,10 @@ static void stat_receive(const screen_state_t *s)
     fmt_fps(val, sizeof val, max_last);
     fmt_fps(avg, sizeof avg, s->rx_fps_tenths);
     stat_row("max fps", val, avg);
+
+    snprintf(val, sizeof val, "%ldms", (long)s->stream_loop.last);
+    snprintf(avg, sizeof avg, "%ldms", (long)s->stream_loop.avg);
+    stat_row("loop", val, avg);
 }
 
 static void stat_render(const screen_state_t *s)
@@ -94,6 +98,10 @@ static void stat_render(const screen_state_t *s)
     fmt_fps(val, sizeof val, disp_last);
     fmt_fps(avg, sizeof avg, s->disp_fps_tenths);
     stat_row("fps", val, avg);
+
+    snprintf(val, sizeof val, "%ldms", (long)s->render_loop.last);
+    snprintf(avg, sizeof avg, "%ldms", (long)s->render_loop.avg);
+    stat_row("loop", val, avg);
 }
 
 void monitor_cmd_stream(const screen_state_t *s)
@@ -120,7 +128,7 @@ static void cmd_stream_live(void)
     screen_state_get(&stats);
     monitor_cmd_stream(&stats);
     while(1) {
-        vTaskDelay(pdMS_TO_TICKS(500));
+        vTaskDelay(pdMS_TO_TICKS(200));
         if(uart_console_try_getchar() == 'q') break;
         screen_state_get(&stats);
         uart_console_write(up_seq);

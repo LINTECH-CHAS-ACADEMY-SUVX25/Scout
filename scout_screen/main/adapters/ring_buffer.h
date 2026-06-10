@@ -1,7 +1,7 @@
 #pragma once
 #include <stdint.h>
 
-#define RING_CAPACITY 128   // must be a power of 2
+#define RING_CAPACITY 512   // must be a power of 2
 
 typedef struct {
     int32_t  buf[RING_CAPACITY];

@@ -10,7 +10,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
-#include "esp_timer.h"
 
 // Task — drives the display on core 1.
 // Each tick: updates LVGL, renders the LVGL frame, sends the current RC command,
@@ -20,8 +19,8 @@
 #define CAM_X  ((SCREEN_W - CAM_W) / 2)
 #define CAM_Y  ((SCREEN_H - CAM_H) / 2)
 
-static const char    *TAG    = "render";
-static screen_tick_t  s_tick = {0};
+static const char *TAG = "render";
+static screen_tick_t  s_tick;
 
 static void render_run(void *arg);
 
@@ -35,9 +34,7 @@ void render_init(void)
 
 static void render_run(void *arg)
 {
-    uint8_t last_cmd      = CMD_STOP;
-    bool    was_connected = false;
-    int64_t last_cmd_ms   = 0;
+    bool was_connected = false;
 
     watchdog_register();
 
@@ -56,20 +53,9 @@ static void render_run(void *arg)
         screen_state_tick_split(&s_tick, &s_tick.lvgl);
 
         // TODO: return x/y joystick values (-255..255) and map to CMD + PWM strength
-        uint8_t c      = lvgl_port_get_cmd();
-        int64_t now_ms = esp_timer_get_time() / 1000;
-        if(c != last_cmd) {
-            ESP_LOGD(TAG, "RC cmd: 0x%02x", c);
-            last_cmd    = c;
-            cam_cmd_send(c);
-            last_cmd_ms = now_ms;
-        } else if(now_ms - last_cmd_ms >= 200) {
-            cam_cmd_send(c);
-            last_cmd_ms = now_ms;
-        }
+        cam_cmd_send_throttled(lvgl_port_get_cmd());
 
-        // Only blit when a new frame was decoded. LVGL redraws just its dirty areas
-        // which don't overlap the camera region, so the last frame persists between decodes.
+        // Only blit when a new frame was decoded. LVGL redraws just its dirty areas which don't overlap the camera region
         const uint8_t *src;
         uint32_t       src_len;
         if(frame_buf_try_acquire(&src, &src_len)) {

@@ -21,7 +21,7 @@ typedef struct {
 } monitor_diag_t;
 
 // Number of lines printed by monitor_cmd_stream — used by callers to reposition the cursor.
-#define STREAM_LINE_COUNT 12
+#define STREAM_LINE_COUNT 14
 
 // Prints the STREAM stats block (STREAM_LINE_COUNT lines).
 void monitor_cmd_stream(const screen_state_t *s);

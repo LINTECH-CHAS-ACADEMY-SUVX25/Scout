@@ -2,7 +2,6 @@
 #include "rc_protocol.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
-#include "esp_timer.h"
 #include "esp_heap_caps.h"
 #include <assert.h>
 
@@ -11,8 +10,6 @@
 // s_dec_buf so the render task can decode without stalling the receive loop.
 // If the decoder is still busy when a new frame arrives, the new frame is dropped.
 
-#define LIVENESS_MS  2000
-
 static uint8_t          *s_asm_buf;
 static uint8_t          *s_dec_buf;
 static uint8_t          *s_pkt;
@@ -20,8 +17,6 @@ static uint32_t          s_dec_len;
 static bool              s_new_frame;
 static bool              s_decoding;
 static SemaphoreHandle_t s_frame_mutex;
-
-static volatile uint32_t s_last_rx_ms;
 
 
 void frame_buf_init(void)
@@ -36,10 +31,8 @@ void frame_buf_init(void)
 uint8_t *frame_buf_asm(void) { return s_asm_buf; }
 uint8_t *frame_buf_pkt(void) { return s_pkt;     }
 
-void frame_buf_publish(uint32_t now_ms, uint32_t len)
+void frame_buf_publish(uint32_t len)
 {
-    s_last_rx_ms = now_ms;
-
     xSemaphoreTake(s_frame_mutex, portMAX_DELAY);
     if(!s_decoding) {
         uint8_t *tmp = s_dec_buf;
@@ -71,7 +64,3 @@ void frame_buf_release(void)
     xSemaphoreGive(s_frame_mutex);
 }
 
-bool frame_buf_is_streaming(void)
-{
-    return (uint32_t)(esp_timer_get_time() / 1000) - s_last_rx_ms < LIVENESS_MS;
-}
