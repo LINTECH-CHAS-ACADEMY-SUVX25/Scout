@@ -25,13 +25,14 @@
 // Layout — a left sidebar flanks the centred camera area. BAR_H is the same
 // for top and bottom so the camera sits vertically symmetric.
 #define BAR_H       36
-#define CONTENT_Y   BAR_H
-#define CONTENT_H   (SCREEN_H - 2 * BAR_H)
+#define PANEL_GAP   8                   // air between the cards/bars and the screen edges
+#define CONTENT_Y   (BAR_H + PANEL_GAP) // content starts below the floating topbar
+#define CONTENT_H   (SCREEN_H - 2 * CONTENT_Y)
 #define SIDE_W      240
 #define PAD         14
 #define ROW_W       (SIDE_W - 2 * PAD)
-#define TELE_HDR_Y  12                  // header at the top of the sidebar
-#define TELE_ROWS_Y 94                  // value rows moved down to a good height
+#define HDR_Y       12                  // section header at the top of each panel
+#define TELE_CARD_Y 78                  // centres the card in the space below the header
 #define TELE_PITCH  30                  // row spacing in the telemetry
 
 // Command badges (FWD/BWD/STP/LFT/RGT)
@@ -39,6 +40,28 @@
 #define BADGE_H     20
 #define BADGE_GAP   7
 #define BADGE_STEP  (BADGE_W + BADGE_GAP)
+
+// Telemetry card — rows sit inside a raised card with hairline separators
+#define CARD_PAD    12
+#define TELE_ROW_W  (ROW_W - 2 * CARD_PAD - 2)
+#define TELE_CARD_H (2 * TELE_PITCH + 22 + 2 * (CARD_PAD + 1))
+
+// Floating corner panels — telemetry top right, joystick bottom left,
+// both the same size for visual symmetry
+#define PANEL_H 236
+
+// Crosshatch texture tiled across the card backgrounds — diagonals in both
+// directions form a diamond pattern. The lines are COL_LINE at low opacity
+// so the same tile works on any card colour.
+#define STRIPE_TILE 8                   // tile side and line period; wraps seamlessly
+#define STRIPE_W    1                   // line thickness along x
+#define STRIPE_OPA  60                  // line alpha (0-255)
+
+// Camera viewfinder — accent corner brackets just outside the video area
+#define CAM_X       ((SCREEN_W - CAM_W) / 2)
+#define CAM_Y       ((SCREEN_H - CAM_H) / 2)
+#define CAM_GAP     8
+#define CAM_CORNER  22
 
 // Palette — dark tech / premium
 #define COL_BG         0x0A0E14
@@ -77,8 +100,8 @@ static uint8_t   s_intro_total;
 static uint8_t   s_intro_step;
 static lv_obj_t *s_knob;
 static lv_obj_t *s_halo;
-static lv_obj_t *s_conn_dot;
-static lv_obj_t *s_conn_label;
+static lv_obj_t *s_wifi_dot;
+static lv_obj_t *s_wifi_arcs[3];
 static lv_obj_t *s_cmd_badges[5];
 static lv_obj_t *s_val_temp;
 static lv_obj_t *s_val_humi;
@@ -108,17 +131,90 @@ static lv_obj_t *make_label(lv_obj_t *parent, const char *text,
     return l;
 }
 
-// Left sidebar — the only panel. The divider line sits on its right edge.
-static lv_obj_t *make_sidebar(void)
+// Stripe tile pixel data — RGB565 + alpha, filled in by make_stripe_tile().
+static uint8_t      s_stripe_map[STRIPE_TILE * STRIPE_TILE * 3];
+static lv_img_dsc_t s_stripe_tile;
+
+// Builds the crosshatch tile at init: (x + y) wrapping inside STRIPE_W gives
+// the "/" diagonals, (x - y) the "\" ones; everything else stays transparent.
+static void make_stripe_tile(void)
+{
+    lv_color_t line = lv_color_hex(COL_LINE);
+    for(int y = 0; y < STRIPE_TILE; y++) {
+        for(int x = 0; x < STRIPE_TILE; x++) {
+            int i = (y * STRIPE_TILE + x) * 3;
+            bool fwd  = (x + y) % STRIPE_TILE < STRIPE_W;
+            bool back = (x - y + STRIPE_TILE) % STRIPE_TILE < STRIPE_W;
+            s_stripe_map[i]     = line.full & 0xFF;
+            s_stripe_map[i + 1] = line.full >> 8;
+            s_stripe_map[i + 2] = (fwd || back) ? STRIPE_OPA : 0;
+        }
+    }
+    s_stripe_tile.header.cf          = LV_IMG_CF_TRUE_COLOR_ALPHA;
+    s_stripe_tile.header.always_zero = 0;
+    s_stripe_tile.header.w           = STRIPE_TILE;
+    s_stripe_tile.header.h           = STRIPE_TILE;
+    s_stripe_tile.data_size          = sizeof(s_stripe_map);
+    s_stripe_tile.data               = s_stripe_map;
+}
+
+// Lays the stripe texture over a card background.
+static void add_stripes(lv_obj_t *card)
+{
+    lv_obj_set_style_bg_img_src(card, &s_stripe_tile, 0);
+    lv_obj_set_style_bg_img_tiled(card, true, 0);
+}
+
+// Thin vertical hairline used to separate groups in the top and bottom bars.
+static void make_vsep(lv_obj_t *parent, lv_align_t align, int32_t x)
+{
+    lv_obj_t *s = make_obj(parent);
+    lv_obj_set_size(s, 1, 12);
+    lv_obj_align(s, align, x, 0);
+    lv_obj_set_style_bg_color(s, lv_color_hex(COL_LINE), 0);
+    lv_obj_set_style_bg_opa(s, LV_OPA_COVER, 0);
+}
+
+// One arc of the WiFi signal symbol — a 90° fan segment above the dot,
+// all arcs sharing the same centre point (cx, cy).
+static lv_obj_t *make_wifi_arc(lv_obj_t *parent, int32_t d, int32_t cx, int32_t cy)
+{
+    lv_obj_t *a = lv_arc_create(parent);
+    lv_obj_set_size(a, d, d);
+    lv_obj_set_pos(a, cx - d / 2, cy - d / 2);
+    lv_arc_set_bg_angles(a, 225, 315);
+    lv_obj_remove_style(a, NULL, LV_PART_KNOB);
+    lv_obj_set_style_arc_opa(a, LV_OPA_TRANSP, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_width(a, 2, LV_PART_MAIN);
+    lv_obj_set_style_arc_color(a, lv_color_hex(COL_LINE), LV_PART_MAIN);
+    lv_obj_clear_flag(a, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    return a;
+}
+
+// Accent corner bracket framing the camera area like a viewfinder.
+static void make_cam_corner(int32_t x, int32_t y, lv_border_side_t side)
+{
+    lv_obj_t *c = make_obj(lv_scr_act());
+    lv_obj_set_size(c, CAM_CORNER, CAM_CORNER);
+    lv_obj_set_pos(c, x, y);
+    lv_obj_set_style_border_width(c, 2, 0);
+    lv_obj_set_style_border_color(c, lv_color_hex(COL_ACCENT), 0);
+    lv_obj_set_style_border_side(c, side, 0);
+    lv_obj_set_style_border_opa(c, LV_OPA_COVER, 0);
+}
+
+// Floating rounded panel — the shared card style for the corner widgets.
+static lv_obj_t *make_panel(int32_t x, int32_t y, int32_t w, int32_t h)
 {
     lv_obj_t *p = make_obj(lv_scr_act());
-    lv_obj_set_size(p, SIDE_W, CONTENT_H);
-    lv_obj_set_pos(p, 0, CONTENT_Y);
+    lv_obj_set_size(p, w, h);
+    lv_obj_set_pos(p, x, y);
+    lv_obj_set_style_radius(p, 8, 0);
     lv_obj_set_style_bg_color(p, lv_color_hex(COL_PANEL), 0);
     lv_obj_set_style_bg_opa(p, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(p, 1, 0);
-    lv_obj_set_style_border_side(p, LV_BORDER_SIDE_RIGHT, 0);
     lv_obj_set_style_border_color(p, lv_color_hex(COL_LINE), 0);
+    add_stripes(p);
     return p;
 }
 
@@ -158,7 +254,7 @@ static lv_obj_t *make_tele_row(lv_obj_t *parent, const char *key,
                                  int32_t y)
 {
     lv_obj_t *row = make_obj(parent);
-    lv_obj_set_size(row, ROW_W, 22);
+    lv_obj_set_size(row, TELE_ROW_W, 22);
     lv_obj_set_pos(row, 0, y);
 
     lv_obj_t *k = make_label(row, key,
@@ -247,21 +343,18 @@ static void intro_close_cb(lv_timer_t *t)
     s_intro_overlay = NULL;
 }
 
-// UI init — trivially sequential widget creation (~200 lines, accepted exception)
+// UI assembly — one builder per visible module, called from lvgl_port_ui_init
 
-void lvgl_port_ui_init(void)
+// Topbar — floating card with the brand, subtitle and WiFi signal symbol.
+static void make_topbar(void)
 {
-    lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(COL_BG), 0);
-    lv_obj_set_style_bg_opa(lv_scr_act(), LV_OPA_COVER, 0);
-
-    // Topbar
     lv_obj_t *topbar = make_obj(lv_scr_act());
-    lv_obj_set_size(topbar, SCREEN_W, BAR_H);
-    lv_obj_align(topbar, LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_obj_set_size(topbar, SCREEN_W - 2 * PANEL_GAP, BAR_H);
+    lv_obj_align(topbar, LV_ALIGN_TOP_MID, 0, PANEL_GAP);
+    lv_obj_set_style_radius(topbar, 8, 0);
     lv_obj_set_style_bg_color(topbar, lv_color_hex(COL_BAR), 0);
     lv_obj_set_style_bg_opa(topbar, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(topbar, 1, 0);
-    lv_obj_set_style_border_side(topbar, LV_BORDER_SIDE_BOTTOM, 0);
     lv_obj_set_style_border_color(topbar, lv_color_hex(COL_LINE), 0);
 
     lv_obj_t *logo = make_label(topbar, "SCOUT",
@@ -269,30 +362,44 @@ void lvgl_port_ui_init(void)
     lv_obj_set_style_text_letter_space(logo, 6, 0);
     lv_obj_align(logo, LV_ALIGN_LEFT_MID, 14, 0);
 
+    make_vsep(topbar, LV_ALIGN_LEFT_MID, 100);
+
     lv_obj_t *sub = make_label(topbar, "RC-TELEMETRI",
         lv_color_hex(COL_TEXT_LO), UI_FONT);
     lv_obj_set_style_text_letter_space(sub, 2, 0);
-    lv_obj_align(sub, LV_ALIGN_LEFT_MID, 120, 0);
+    lv_obj_align(sub, LV_ALIGN_LEFT_MID, 112, 0);
 
-    s_conn_label = make_label(topbar, "waiting...",
-        lv_color_hex(COL_TEXT_MID), UI_FONT);
-    lv_obj_align(s_conn_label, LV_ALIGN_RIGHT_MID, -60, 0);
+    make_vsep(topbar, LV_ALIGN_RIGHT_MID, -52);
 
-    s_conn_dot = make_obj(topbar);
-    lv_obj_set_size(s_conn_dot, 6, 6);
-    lv_obj_align(s_conn_dot, LV_ALIGN_RIGHT_MID, -170, 0);
-    lv_obj_set_style_radius(s_conn_dot, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(s_conn_dot, lv_color_hex(COL_BAD), 0);
-    lv_obj_set_style_bg_opa(s_conn_dot, LV_OPA_COVER, 0);
+    // WiFi signal symbol — dot + three arcs, lit according to the level
+    // Container height matches the visible glyph (arc tops to dot bottom).
+    // The -2 offset centres the symbol optically against the separator.
+    lv_obj_t *wifi_icon = make_obj(topbar);
+    lv_obj_set_size(wifi_icon, 28, 15);
+    lv_obj_align(wifi_icon, LV_ALIGN_RIGHT_MID, -14, -2);
 
-    // Bottombar
+    s_wifi_dot = make_obj(wifi_icon);
+    lv_obj_set_size(s_wifi_dot, 4, 4);
+    lv_obj_set_pos(s_wifi_dot, 12, 11);
+    lv_obj_set_style_radius(s_wifi_dot, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(s_wifi_dot, lv_color_hex(COL_BAD), 0);
+    lv_obj_set_style_bg_opa(s_wifi_dot, LV_OPA_COVER, 0);
+
+    for(int i = 0; i < 3; i++) {
+        s_wifi_arcs[i] = make_wifi_arc(wifi_icon, 10 + 8 * i, 14, 13);
+    }
+}
+
+// Bottombar — floating card with the network facts and the RTOS tag.
+static void make_botbar(void)
+{
     lv_obj_t *botbar = make_obj(lv_scr_act());
-    lv_obj_set_size(botbar, SCREEN_W, BAR_H);
-    lv_obj_align(botbar, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+    lv_obj_set_size(botbar, SCREEN_W - 2 * PANEL_GAP, BAR_H);
+    lv_obj_align(botbar, LV_ALIGN_BOTTOM_MID, 0, -PANEL_GAP);
+    lv_obj_set_style_radius(botbar, 8, 0);
     lv_obj_set_style_bg_color(botbar, lv_color_hex(COL_BAR), 0);
     lv_obj_set_style_bg_opa(botbar, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(botbar, 1, 0);
-    lv_obj_set_style_border_side(botbar, LV_BORDER_SIDE_TOP, 0);
     lv_obj_set_style_border_color(botbar, lv_color_hex(COL_LINE), 0);
 
     const char *bot_keys[] = { "IP", "UDP" };
@@ -309,38 +416,96 @@ void lvgl_port_ui_init(void)
         lv_obj_align(v, LV_ALIGN_LEFT_MID, bot_x, 0);
         bot_x += (i == 0) ? 110 : 50;
     }
+    make_vsep(botbar, LV_ALIGN_LEFT_MID, 140);
+    make_vsep(botbar, LV_ALIGN_RIGHT_MID, -165);
+
     lv_obj_t *rtos_k = make_label(botbar, "RTOS",
         lv_color_hex(COL_TEXT_LO), UI_FONT);
     lv_obj_align(rtos_k, LV_ALIGN_RIGHT_MID, -120, 0);
     lv_obj_t *rtos_v = make_label(botbar, "FREERTOS",
-        lv_color_hex(COL_TEXT_MID), UI_FONT);
+        lv_color_hex(COL_ACCENT), UI_FONT);
     lv_obj_align(rtos_v, LV_ALIGN_RIGHT_MID, -14, 0);
+}
 
-    // The only sidebar is on the left. The right side stays as plain
-    // background — no panel, no line.
-    lv_obj_t *left = make_sidebar();
+// Telemetry panel — floating card in the top right corner, aligned with the
+// camera top edge. Holds the value rows in a raised inner card.
+static void make_tele_panel(void)
+{
+    lv_obj_t *tele_panel = make_panel(SCREEN_W - PANEL_GAP - SIDE_W,
+                                      CAM_Y,
+                                      SIDE_W, PANEL_H);
 
-    make_section_hdr(left, "TELEMETRI", TELE_HDR_Y);
+    make_section_hdr(tele_panel, "TELEMETRI", HDR_Y);
 
-    lv_obj_t *tele_cont = make_obj(left);
-    lv_obj_set_size(tele_cont, ROW_W, 3 * TELE_PITCH);
-    lv_obj_set_pos(tele_cont, PAD, TELE_ROWS_Y);
+    // Raised card around the telemetry rows
+    lv_obj_t *tele_card = lv_obj_create(tele_panel);
+    lv_obj_set_size(tele_card, ROW_W, TELE_CARD_H);
+    lv_obj_set_pos(tele_card, PAD, TELE_CARD_Y);
+    lv_obj_set_style_radius(tele_card, 8, 0);
+    lv_obj_set_style_bg_color(tele_card, lv_color_hex(COL_BAR), 0);
+    lv_obj_set_style_bg_opa(tele_card, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(tele_card, 1, 0);
+    lv_obj_set_style_border_color(tele_card, lv_color_hex(COL_LINE), 0);
+    lv_obj_set_style_pad_all(tele_card, 0, 0);
+    lv_obj_clear_flag(tele_card, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
 
-    s_val_temp = make_tele_row(tele_cont, "temperature", "--.- C",   lv_color_hex(COL_TEXT_HI), 0 * TELE_PITCH);
-    s_val_humi = make_tele_row(tele_cont, "humidity",    "-- %",     lv_color_hex(COL_TEXT_HI), 1 * TELE_PITCH);
-    s_val_pres = make_tele_row(tele_cont, "pressure",    "---- hPa", lv_color_hex(COL_TEXT_HI), 2 * TELE_PITCH);
+    lv_obj_t *tele_cont = make_obj(tele_card);
+    lv_obj_set_size(tele_cont, TELE_ROW_W, 2 * TELE_PITCH + 22);
+    lv_obj_set_pos(tele_cont, CARD_PAD, CARD_PAD);
 
-    lv_obj_t *divider = make_obj(left);
-    lv_obj_set_size(divider, SIDE_W, 1);
-    lv_obj_set_pos(divider, 0, CONTENT_H - 226);
-    lv_obj_set_style_bg_color(divider, lv_color_hex(COL_LINE), 0);
-    lv_obj_set_style_bg_opa(divider, LV_OPA_COVER, 0);
+    s_val_temp = make_tele_row(tele_cont, "temperature", "--.- C",   lv_color_hex(COL_ACCENT), 0 * TELE_PITCH);
+    s_val_humi = make_tele_row(tele_cont, "humidity",    "-- %",     lv_color_hex(COL_ACCENT), 1 * TELE_PITCH);
+    s_val_pres = make_tele_row(tele_cont, "pressure",    "---- hPa", lv_color_hex(COL_ACCENT), 2 * TELE_PITCH);
 
-    make_section_hdr(left, "JOYSTICK", CONTENT_H - 216);
+    for(int i = 1; i < 3; i++) {
+        lv_obj_t *sep = make_obj(tele_cont);
+        lv_obj_set_size(sep, TELE_ROW_W, 1);
+        lv_obj_set_pos(sep, 0, i * TELE_PITCH - 4);
+        lv_obj_set_style_bg_color(sep, lv_color_hex(COL_LINE), 0);
+        lv_obj_set_style_bg_opa(sep, LV_OPA_COVER, 0);
+    }
+}
 
-    lv_obj_t *base = lv_obj_create(left);
+// Command badge row (FWD/BWD/STP/LFT/RGT) at the top of the joystick panel.
+static void make_cmd_badges(lv_obj_t *joy_panel)
+{
+    const char *badge_labels[5] = { "FWD", "BWD", "STP", "LFT", "RGT" };
+    int32_t badge_x = (SIDE_W - (5 * BADGE_W + 4 * BADGE_GAP)) / 2;   // centre the row
+    for(int i = 0; i < 5; i++) {
+        lv_obj_t *badge = lv_obj_create(joy_panel);
+        lv_obj_set_size(badge, BADGE_W, BADGE_H);
+        lv_obj_set_pos(badge, badge_x, 44);
+        lv_obj_set_style_radius(badge, BADGE_H / 2, 0);
+        lv_obj_set_style_bg_color(badge, lv_color_hex(COL_BADGE_BG), 0);
+        lv_obj_set_style_bg_opa(badge, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(badge, 1, 0);
+        lv_obj_set_style_border_color(badge, lv_color_hex(COL_LINE), 0);
+        lv_obj_set_style_pad_all(badge, 0, 0);
+        lv_obj_clear_flag(badge, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_t *bl = make_label(badge, badge_labels[i],
+            lv_color_hex(COL_TEXT_LO), UI_FONT);
+        lv_obj_align(bl, LV_ALIGN_CENTER, 0, 0);
+        s_cmd_badges[i] = badge;
+        badge_x += BADGE_STEP;
+    }
+    update_cmd_badges(CMD_STOP);
+}
+
+// The joystick itself — concentric rings, touch base, halo and knob.
+static void make_joystick(lv_obj_t *joy_panel)
+{
+    // Outer concentric ring gives the joystick an instrument-dial look
+    lv_obj_t *joy_ring = make_obj(joy_panel);
+    lv_obj_set_size(joy_ring, 146, 146);
+    lv_obj_set_pos(joy_ring, (SIDE_W - 146) / 2, 78);
+    lv_obj_set_style_radius(joy_ring, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_border_width(joy_ring, 1, 0);
+    lv_obj_set_style_border_color(joy_ring, lv_color_hex(COL_LINE), 0);
+    lv_obj_set_style_border_opa(joy_ring, LV_OPA_COVER, 0);
+
+    lv_obj_t *base = lv_obj_create(joy_panel);
     lv_obj_set_size(base, 130, 130);
-    lv_obj_set_pos(base, (SIDE_W - 130) / 2, CONTENT_H - 152);
+    lv_obj_set_pos(base, (SIDE_W - 130) / 2, 86);
     lv_obj_set_style_radius(base, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_color(base, lv_color_hex(COL_BG), 0);
     lv_obj_set_style_bg_opa(base, LV_OPA_COVER, 0);
@@ -409,36 +574,60 @@ void lvgl_port_ui_init(void)
     lv_obj_set_style_bg_opa(ch_dot, LV_OPA_60, 0);
     lv_obj_set_style_border_width(ch_dot, 0, 0);
     lv_obj_clear_flag(ch_dot, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
-
-    const char *badge_labels[5] = { "FWD", "BWD", "STP", "LFT", "RGT" };
-    int32_t badge_x = (SIDE_W - (5 * BADGE_W + 4 * BADGE_GAP)) / 2;   // centre the row
-    for(int i = 0; i < 5; i++) {
-        lv_obj_t *badge = lv_obj_create(left);
-        lv_obj_set_size(badge, BADGE_W, BADGE_H);
-        lv_obj_set_pos(badge, badge_x, CONTENT_H - 190);
-        lv_obj_set_style_radius(badge, 3, 0);
-        lv_obj_set_style_bg_color(badge, lv_color_hex(COL_BADGE_BG), 0);
-        lv_obj_set_style_bg_opa(badge, LV_OPA_COVER, 0);
-        lv_obj_set_style_border_width(badge, 1, 0);
-        lv_obj_set_style_border_color(badge, lv_color_hex(COL_LINE), 0);
-        lv_obj_set_style_pad_all(badge, 0, 0);
-        lv_obj_clear_flag(badge, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_t *bl = make_label(badge, badge_labels[i],
-            lv_color_hex(COL_TEXT_LO), UI_FONT);
-        lv_obj_align(bl, LV_ALIGN_CENTER, 0, 0);
-        s_cmd_badges[i] = badge;
-        badge_x += BADGE_STEP;
-    }
-    update_cmd_badges(CMD_STOP);
 }
 
-// Future: lvgl_port_ui_update(float temp, float humi, float pres, bool connected)
-// when cam sends sensor data
-void lvgl_port_ui_update(bool connected)
+// Joystick panel — floating card in the bottom left corner, aligned with the
+// camera bottom edge. Badge row on top, the stick below.
+static void make_joy_panel(void)
 {
-    lv_obj_set_style_bg_color(s_conn_dot,
-        lv_color_hex(connected ? COL_GOOD : COL_BAD), 0);
-    lv_label_set_text(s_conn_label, connected ? "connected" : "waiting...");
+    lv_obj_t *joy_panel = make_panel(PANEL_GAP,
+                                     CAM_Y + CAM_H - PANEL_H,
+                                     SIDE_W, PANEL_H);
+
+    make_section_hdr(joy_panel, "JOYSTICK", HDR_Y);
+    make_cmd_badges(joy_panel);
+    make_joystick(joy_panel);
+}
+
+// Viewfinder corners — the video is blitted between them by render.c.
+static void make_cam_corners(void)
+{
+    make_cam_corner(CAM_X - CAM_GAP, CAM_Y - CAM_GAP,
+                    LV_BORDER_SIDE_TOP | LV_BORDER_SIDE_LEFT);
+    make_cam_corner(CAM_X + CAM_W + CAM_GAP - CAM_CORNER, CAM_Y - CAM_GAP,
+                    LV_BORDER_SIDE_TOP | LV_BORDER_SIDE_RIGHT);
+    make_cam_corner(CAM_X - CAM_GAP, CAM_Y + CAM_H + CAM_GAP - CAM_CORNER,
+                    LV_BORDER_SIDE_BOTTOM | LV_BORDER_SIDE_LEFT);
+    make_cam_corner(CAM_X + CAM_W + CAM_GAP - CAM_CORNER,
+                    CAM_Y + CAM_H + CAM_GAP - CAM_CORNER,
+                    LV_BORDER_SIDE_BOTTOM | LV_BORDER_SIDE_RIGHT);
+}
+
+void lvgl_port_ui_init(void)
+{
+    make_stripe_tile();
+
+    lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(COL_BG), 0);
+    lv_obj_set_style_bg_opa(lv_scr_act(), LV_OPA_COVER, 0);
+
+    make_topbar();
+    make_botbar();
+    make_tele_panel();
+    make_joy_panel();
+    make_cam_corners();
+}
+
+// Future: lvgl_port_ui_update(float temp, float humi, float pres, uint8_t wifi_level)
+// when cam sends sensor data
+void lvgl_port_ui_update(uint8_t wifi_level)
+{
+    lv_obj_set_style_bg_color(s_wifi_dot,
+        lv_color_hex(wifi_level ? COL_TEXT_HI : COL_BAD), 0);
+    for(int i = 0; i < 3; i++) {
+        lv_obj_set_style_arc_color(s_wifi_arcs[i],
+            lv_color_hex(wifi_level > (uint8_t)i ? COL_TEXT_HI : COL_LINE),
+            LV_PART_MAIN);
+    }
 }
 
 void lvgl_port_intro_screen(uint8_t total_steps)

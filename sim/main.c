@@ -72,8 +72,9 @@ static void make_camera_box(void)
     lv_obj_set_style_radius(box, 0, 0);
     lv_obj_set_style_bg_color(box, lv_color_hex(0x0A0E14), 0);
     lv_obj_set_style_bg_opa(box, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(box, 2, 0);
-    lv_obj_set_style_border_color(box, lv_color_hex(0x22D3EE), 0);
+    // Delade UI:t ritar accent-hörn runt kameraytan — håll rutan diskret
+    lv_obj_set_style_border_width(box, 1, 0);
+    lv_obj_set_style_border_color(box, lv_color_hex(0x232B36), 0);
     lv_obj_clear_flag(box, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
 
     lv_obj_t *l = lv_label_create(box);
@@ -153,10 +154,10 @@ int main(void)
         return 0;
     }
 
-    bool running   = true;
-    bool connected = false;
-    uint32_t start = SDL_GetTicks();
-    uint32_t last  = start;
+    bool running     = true;
+    uint8_t wifi_lvl = 0;
+    uint32_t start   = SDL_GetTicks();
+    uint32_t last    = start;
 
     while(running) {
         SDL_Event e;
@@ -168,8 +169,8 @@ int main(void)
                 if(k == SDLK_ESCAPE || k == SDLK_q) {
                     running = false;
                 } else if(k == SDLK_c) {
-                    connected = !connected;       // växla connected-state
-                    lvgl_port_ui_update(connected);
+                    wifi_lvl = (wifi_lvl + 1) % 4;   // stega wifi-nivån 0-3
+                    lvgl_port_ui_update(wifi_lvl);
                 }
             }
         }

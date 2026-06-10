@@ -17,7 +17,7 @@ Första bygget tar en stund (hela LVGL kompileras). Därefter byggs bara det
 som ändrats. `make clean` tömmer `build/`.
 
 Tangenter i fönstret:
-* **c** — växla connected/waiting (testar `lvgl_port_ui_update`)
+* **c** — stega wifi-signalnivån 0-3 (testar `lvgl_port_ui_update`)
 * **q** / **Esc** — avsluta
 
 Joysticken styrs med musen, precis som touch på enheten.

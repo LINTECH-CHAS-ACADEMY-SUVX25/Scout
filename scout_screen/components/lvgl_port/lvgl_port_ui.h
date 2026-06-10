@@ -15,8 +15,8 @@ void    lvgl_port_intro_screen(uint8_t total_steps);
 // removes itself once the render loop is running.
 void    lvgl_port_intro_step(const char *label);
 
-// Updates the connection status indicator. Call when connected state changes.
-void    lvgl_port_ui_update(bool connected);
+// Updates the WiFi signal symbol: 0 none (red dot), 1 low, 2 mid, 3 full.
+void    lvgl_port_ui_update(uint8_t wifi_level);
 
 // Returns the current RC command byte derived from the joystick position.
 uint8_t lvgl_port_get_cmd(void);
