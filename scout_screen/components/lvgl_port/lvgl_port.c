@@ -8,7 +8,7 @@
 #include <stdbool.h>
 
 // Connects LVGL to the Waveshare RGB LCD and GT911 touch controller.
-// The UI layout itself lives in lvgl_port_ui.c, shared with the simulator.
+// The UI layout itself lives in the ui component, shared with the simulator.
 
 // LVGL driver callbacks
 
@@ -65,8 +65,6 @@ void lvgl_port_init(void)
     lv_indev_drv_register(&indev_drv);
 
     xTaskCreatePinnedToCore(tick_task, "lvgl_tick", 2048, NULL, 5, NULL, 1);
-
-    lvgl_port_ui_init();
 }
 
 // Render

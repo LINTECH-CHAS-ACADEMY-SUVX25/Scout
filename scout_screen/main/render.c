@@ -2,6 +2,7 @@
 #include "frame_buf.h"
 #include "cam_cmd.h"
 #include "lvgl_port.h"
+#include "scout_ui.h"
 #include "display.h"
 #include "jpeg.h"
 #include "watchdog.h"
@@ -43,7 +44,7 @@ static void render_run(void *arg)
 
         bool connected = frame_buf_is_connected();
         if(connected != was_connected) {
-            lvgl_port_ui_update(connected);
+            scout_ui_update(connected);
             if(!connected) display_clear_region(CAM_X, CAM_Y, CAM_W, CAM_H);
         }
         was_connected = connected;
@@ -53,7 +54,7 @@ static void render_run(void *arg)
         int64_t ms = (esp_timer_get_time() - t) / 1000;
         frame_buf_record_lvgl((int32_t)ms);
 
-        uint8_t c = lvgl_port_get_cmd();
+        uint8_t c = scout_ui_get_cmd();
         if(c != last_cmd) {
             ESP_LOGD(TAG, "RC cmd: 0x%02x", c);
             last_cmd = c;

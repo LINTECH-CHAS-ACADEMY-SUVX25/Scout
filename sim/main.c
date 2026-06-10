@@ -2,10 +2,10 @@
 //
 // Den här filen ersätter driver-delen av lvgl_port.c (flush, touch, tick,
 // init, render-loop) med SDL och är ENBART för simulatorn. UI:t självt
-// byggs av lvgl_port_ui.c, samma fil som enheten kompilerar.
+// byggs av scout_ui.c, samma fil som enheten kompilerar.
 
 #include "lvgl.h"
-#include "lvgl_port_ui.h"
+#include "scout_ui.h"
 #include "display.h"
 #include <SDL2/SDL.h>
 #include <stdbool.h>
@@ -58,7 +58,7 @@ static void fake_intro_steps(uint32_t elapsed_ms)
     static const char *labels[INTRO_STEPS] = { "WIFI", "MONITOR", "STREAM", "READY" };
     static int next = 0;
     if(next < INTRO_STEPS && elapsed_ms >= (uint32_t)INTRO_STEP_MS * (next + 1)) {
-        lvgl_port_intro_step(labels[next]);
+        scout_ui_intro_step(labels[next]);
         next++;
     }
 }
@@ -143,9 +143,9 @@ int main(void)
     sdl_init();
     lvgl_init();
 
-    lvgl_port_ui_init();
+    scout_ui_init();
     make_camera_box();
-    lvgl_port_intro_screen(INTRO_STEPS);
+    scout_ui_intro_screen(INTRO_STEPS);
 
     const char *shot = SDL_getenv("SIM_SHOT");
     if(shot) {
@@ -170,7 +170,7 @@ int main(void)
                     running = false;
                 } else if(k == SDLK_c) {
                     wifi_lvl = (wifi_lvl + 1) % 4;   // stega wifi-nivån 0-3
-                    lvgl_port_ui_update(wifi_lvl);
+                    scout_ui_update(wifi_lvl);
                 }
             }
         }

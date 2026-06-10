@@ -1,4 +1,4 @@
-#include "lvgl_port_ui.h"
+#include "scout_ui.h"
 #include "display.h"
 #include "rc_protocol.h"
 #include "lvgl.h"
@@ -343,7 +343,7 @@ static void intro_close_cb(lv_timer_t *t)
     s_intro_overlay = NULL;
 }
 
-// UI assembly — one builder per visible module, called from lvgl_port_ui_init
+// UI assembly — one builder per visible module, called from scout_ui_init
 
 // Topbar — floating card with the brand, subtitle and WiFi signal symbol.
 static void make_topbar(void)
@@ -603,7 +603,7 @@ static void make_cam_corners(void)
                     LV_BORDER_SIDE_BOTTOM | LV_BORDER_SIDE_RIGHT);
 }
 
-void lvgl_port_ui_init(void)
+void scout_ui_init(void)
 {
     make_stripe_tile();
 
@@ -617,9 +617,9 @@ void lvgl_port_ui_init(void)
     make_cam_corners();
 }
 
-// Future: lvgl_port_ui_update(float temp, float humi, float pres, uint8_t wifi_level)
+// Future: scout_ui_update(float temp, float humi, float pres, uint8_t wifi_level)
 // when cam sends sensor data
-void lvgl_port_ui_update(uint8_t wifi_level)
+void scout_ui_update(uint8_t wifi_level)
 {
     lv_obj_set_style_bg_color(s_wifi_dot,
         lv_color_hex(wifi_level ? COL_TEXT_HI : COL_BAD), 0);
@@ -630,7 +630,7 @@ void lvgl_port_ui_update(uint8_t wifi_level)
     }
 }
 
-void lvgl_port_intro_screen(uint8_t total_steps)
+void scout_ui_intro_screen(uint8_t total_steps)
 {
     s_intro_total = total_steps ? total_steps : 1;
     s_intro_step  = 0;
@@ -699,7 +699,7 @@ void lvgl_port_intro_screen(uint8_t total_steps)
     lv_obj_align(s_intro_pct, LV_ALIGN_CENTER, (INTRO_BAR_W / 2) - 40, 72);
 }
 
-void lvgl_port_intro_step(const char *label)
+void scout_ui_intro_step(const char *label)
 {
     if(s_intro_overlay == NULL) return;
 
@@ -718,4 +718,4 @@ void lvgl_port_intro_step(const char *label)
     lv_refr_now(lv_disp_get_default());
 }
 
-uint8_t lvgl_port_get_cmd(void) { return s_cmd; }
+uint8_t scout_ui_get_cmd(void) { return s_cmd; }
