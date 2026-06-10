@@ -1,19 +1,14 @@
-// UI-vy för Scout-skärmen — SPEGLING av UI-sektionen i
-// scout_screen/components/lvgl_port/lvgl_port.c.
-//
-// Allt mellan "KOPIERA FRÅN HÄR" och "KOPIERA TILL HÄR" är ordagrant
-// identiskt med enhetskoden och kan klistras tillbaka rakt in i
-// lvgl_port.c. Raderna utanför markörerna (dessa includes + sim_ui_init
-// längst ned) är simulator-specifika och ska INTE kopieras.
-
-#include "lvgl.h"
+#include "lvgl_port_ui.h"
+#include "display.h"
 #include "rc_protocol.h"
-#include "sim_screen.h"   // SCREEN_W / SCREEN_H (motsvarar display.h på enheten)
+#include "lvgl.h"
 #include <math.h>
-#include <stdio.h>
 #include <stdbool.h>
 
-// ===================== KOPIERA FRÅN HÄR =============================
+// Owns the full UI layout — widget creation, event callbacks, and the intro
+// overlay. Compiled by both the scout_screen firmware and the PC simulator
+// (sim/), so it must stay free of ESP-IDF and FreeRTOS headers. The simulator
+// provides its own display.h with SCREEN_W/SCREEN_H.
 
 #define JOY_RADIUS 52
 
@@ -21,25 +16,25 @@
 #define INTRO_BAR_W 400
 #define INTRO_BAR_H 22
 
-// Layout — två lika breda sidofält flankerar en centrerad kameruta.
-// BAR_H är lika för topp och botten så kameran blir vertikalt symmetrisk.
+// Layout — a left sidebar flanks the centred camera area. BAR_H is the same
+// for top and bottom so the camera sits vertically symmetric.
 #define BAR_H       36
 #define CONTENT_Y   BAR_H
 #define CONTENT_H   (SCREEN_H - 2 * BAR_H)
 #define SIDE_W      240
 #define PAD         14
 #define ROW_W       (SIDE_W - 2 * PAD)
-#define TELE_HDR_Y  12                  // rubriken högst upp i sidofältet
-#define TELE_ROWS_Y 94                  // värdesraderna nedflyttade till bra höjd
-#define TELE_PITCH  30                  // radavstånd i telemetrin
+#define TELE_HDR_Y  12                  // header at the top of the sidebar
+#define TELE_ROWS_Y 94                  // value rows moved down to a good height
+#define TELE_PITCH  30                  // row spacing in the telemetry
 
-// Styrknappar (FWD/BWD/STP/LFT/RGT)
+// Command badges (FWD/BWD/STP/LFT/RGT)
 #define BADGE_W     38
 #define BADGE_H     20
 #define BADGE_GAP   7
 #define BADGE_STEP  (BADGE_W + BADGE_GAP)
 
-// Palett — dark tech / premium
+// Palette — dark tech / premium
 #define COL_BG         0x0A0E14
 #define COL_BAR        0x0D1117
 #define COL_PANEL      0x141A23
@@ -53,11 +48,14 @@
 #define COL_BADGE_BG   0x1B2230
 #define COL_BADGE_ON   0x10222A
 
-// UI-font — Press Start 2P (genererade C-fonter, se respektive .c-fil)
+#define XSTR(x) STR(x)
+#define STR(x)  #x
+
+// UI font — Press Start 2P (generated C fonts, see the respective .c files)
 LV_FONT_DECLARE(press_start_2p_8);
 LV_FONT_DECLARE(press_start_2p_24);
 #define UI_FONT   (&press_start_2p_8)
-#define LOGO_FONT (&press_start_2p_24)   // intro-loggan
+#define LOGO_FONT (&press_start_2p_24)   // intro logo
 
 static volatile uint8_t s_cmd = CMD_STOP;
 
@@ -98,24 +96,7 @@ static lv_obj_t *make_label(lv_obj_t *parent, const char *text,
     return l;
 }
 
-static lv_obj_t *make_bar(lv_obj_t *parent, int32_t w)
-{
-    lv_obj_t *track = make_obj(parent);
-    lv_obj_set_size(track, w, 3);
-    lv_obj_set_style_bg_color(track, lv_color_hex(COL_LINE), 0);
-    lv_obj_set_style_bg_opa(track, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(track, 2, 0);
-
-    lv_obj_t *fill = make_obj(track);
-    lv_obj_set_size(fill, 0, 3);
-    lv_obj_align(fill, LV_ALIGN_LEFT_MID, 0, 0);
-    lv_obj_set_style_bg_color(fill, lv_color_hex(COL_ACCENT), 0);
-    lv_obj_set_style_bg_opa(fill, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(fill, 2, 0);
-    return fill;
-}
-
-// Vänster sidomeny — enda panelen. Linjen sitter på högerkanten.
+// Left sidebar — the only panel. The divider line sits on its right edge.
 static lv_obj_t *make_sidebar(void)
 {
     lv_obj_t *p = make_obj(lv_scr_act());
@@ -129,7 +110,7 @@ static lv_obj_t *make_sidebar(void)
     return p;
 }
 
-// Sektionsrubrik med cyan accent-markör till vänster.
+// Section header with a cyan accent mark on the left.
 static void make_section_hdr(lv_obj_t *parent, const char *text, int32_t y)
 {
     lv_obj_t *mark = make_obj(parent);
@@ -243,23 +224,23 @@ static void joy_event(lv_event_t *e)
     }
 }
 
-// UI update
+// Intro animation callbacks
 
-// Future: lvgl_port_ui_update(float temp, float humi, float pres, bool connected)
-// when cam sends sensor data — also update ui.c call site
-void lvgl_port_ui_update(bool connected)
+static void intro_bar_exec(void *var, int32_t val)
 {
-    lv_obj_set_style_bg_color(s_conn_dot,
-        lv_color_hex(connected ? COL_GOOD : COL_BAD), 0);
-    lv_label_set_text(s_conn_label, connected ? "connected" : "waiting...");
+    lv_obj_set_width((lv_obj_t *)var, val);
+}
+
+static void intro_anim_done(lv_anim_t *a)
+{
+    (void)a;
+    lv_obj_del(s_intro_overlay);
+    s_intro_overlay = NULL;
 }
 
 // UI init — trivially sequential widget creation (~200 lines, accepted exception)
 
-#define XSTR(x) STR(x)
-#define STR(x)  #x
-
-static void lvgl_port_ui_init(void)
+void lvgl_port_ui_init(void)
 {
     lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(COL_BG), 0);
     lv_obj_set_style_bg_opa(lv_scr_act(), LV_OPA_COVER, 0);
@@ -326,8 +307,8 @@ static void lvgl_port_ui_init(void)
         lv_color_hex(COL_TEXT_MID), UI_FONT);
     lv_obj_align(rtos_v, LV_ALIGN_RIGHT_MID, -14, 0);
 
-    // Enda sidomenyn ligger till vänster. Höger sida lämnas som ren
-    // bakgrund — ingen panel, ingen linje.
+    // The only sidebar is on the left. The right side stays as plain
+    // background — no panel, no line.
     lv_obj_t *left = make_sidebar();
 
     make_section_hdr(left, "TELEMETRI", TELE_HDR_Y);
@@ -421,7 +402,7 @@ static void lvgl_port_ui_init(void)
     lv_obj_clear_flag(ch_dot, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
 
     const char *badge_labels[5] = { "FWD", "BWD", "STP", "LFT", "RGT" };
-    int32_t badge_x = (SIDE_W - (5 * BADGE_W + 4 * BADGE_GAP)) / 2;   // centrera raden
+    int32_t badge_x = (SIDE_W - (5 * BADGE_W + 4 * BADGE_GAP)) / 2;   // centre the row
     for(int i = 0; i < 5; i++) {
         lv_obj_t *badge = lv_obj_create(left);
         lv_obj_set_size(badge, BADGE_W, BADGE_H);
@@ -442,18 +423,13 @@ static void lvgl_port_ui_init(void)
     update_cmd_badges(CMD_STOP);
 }
 
-// Intro screen
-
-static void intro_bar_exec(void *var, int32_t val)
+// Future: lvgl_port_ui_update(float temp, float humi, float pres, bool connected)
+// when cam sends sensor data
+void lvgl_port_ui_update(bool connected)
 {
-    lv_obj_set_width((lv_obj_t *)var, val);
-}
-
-static void intro_anim_done(lv_anim_t *a)
-{
-    (void)a;
-    lv_obj_del(s_intro_overlay);
-    s_intro_overlay = NULL;
+    lv_obj_set_style_bg_color(s_conn_dot,
+        lv_color_hex(connected ? COL_GOOD : COL_BAD), 0);
+    lv_label_set_text(s_conn_label, connected ? "connected" : "waiting...");
 }
 
 void lvgl_port_intro_screen(void)
@@ -516,10 +492,4 @@ void lvgl_port_intro_screen(void)
     lv_anim_start(&a);
 }
 
-// ===================== KOPIERA TILL HÄR =============================
-
-// Simulator-ingång — anropar den statiska ui-init. Kopieras INTE till enheten.
-void sim_ui_init(void)
-{
-    lvgl_port_ui_init();
-}
+uint8_t lvgl_port_get_cmd(void) { return s_cmd; }

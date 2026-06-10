@@ -30,7 +30,6 @@
 
 // Fonts
 #define LV_FONT_MONTSERRAT_14  1
-#define LV_FONT_MONTSERRAT_48  1
 
 // Performance — keep frequently called draw functions in IRAM
 #define LV_ATTRIBUTE_FAST_MEM IRAM_ATTR

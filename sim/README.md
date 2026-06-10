@@ -1,8 +1,10 @@
 # Scout UI-simulator
 
 Kör skärmens LVGL-UI på en PC via SDL2, så att UI-arbetet kan göras utan
-att flasha hårdvara. Bygger LVGL från samma vendored källträd som
-`scout_screen` använder.
+att flasha hårdvara. Bygger LVGL **och UI-koden** från samma källträd som
+`scout_screen` använder (`scout_screen/components/lvgl_port/`) — det finns
+ingen kopia att hålla i synk; en ändring i `lvgl_port_ui.c` syns i både
+simulatorn och firmware-bygget.
 
 ## Bygg och kör
 
@@ -33,10 +35,15 @@ till `SIM_SHOT_MS=3000` för att spola fram förbi intron först.
 
 | Fil            | Roll                                                        |
 |----------------|-------------------------------------------------------------|
-| `ui.c`         | UI-vyn — **spegling** av UI-sektionen i `lvgl_port.c`       |
 | `main.c`       | SDL + LVGL-glue + kamerareferensram. Enbart för simulatorn  |
 | `lv_conf.h`    | PC-variant av enhetens `lv_conf.h`                          |
-| `sim_screen.h` | `SCREEN_W` / `SCREEN_H` (motsvarar `display.h` på enheten)  |
+| `display.h`    | `SCREEN_W` / `SCREEN_H` (ersätter enhetens `display.h`)     |
+
+Delade filer som kompileras från `scout_screen/components/lvgl_port/`:
+
+| Fil            | Roll                                                        |
+|----------------|-------------------------------------------------------------|
+| `lvgl_port_ui.c` | Hela UI-layouten — samma fil som enheten kompilerar       |
 | `press_start_2p_8.c`  | UI-fonten (genererad C-font, Press Start 2P 8px)    |
 | `press_start_2p_24.c` | Intro-loggans font (Press Start 2P 24px)            |
 
@@ -62,30 +69,18 @@ Kamerarutan ritas som en cyan referensram på **480 × 480**, centrerad. På
 enheten finns ingen kamera-widget — videon blittas dit förbi LVGL av
 `render.c`. Ramen är bara där så layouten kan ritas runt rätt yta.
 
-## Flytta UI:t till hårdvaran
+## Delad UI-kod
 
-`ui.c` är skriven för att kopieras rakt tillbaka. Allt mellan markörerna
+UI-layouten ligger i `scout_screen/components/lvgl_port/lvgl_port_ui.c` och
+kompileras av båda byggena — det finns inget kopieringssteg. När simulatorn
+ser rätt ut är firmware-koden redan uppdaterad; verifiera med `idf.py build`
+i `scout_screen/`.
 
-```
-// ===== KOPIERA FRÅN HÄR =====
-...
-// ===== KOPIERA TILL HÄR =====
-```
+`lvgl_port_ui.c` får inte inkludera ESP-IDF- eller FreeRTOS-headers (då
+bryts sim-bygget). Driver-delen (`flush_cb`, touch, tick, `lvgl_port_init`,
+`lvgl_port_render_frame`) lever i `lvgl_port.c` på enheten respektive i
+`main.c` i simulatorn.
 
-är ordagrant identiskt med UI-sektionen i
-`scout_screen/components/lvgl_port/lvgl_port.c`. När du är nöjd: ersätt
-motsvarande block i `lvgl_port.c` med ditt. Raderna utanför markörerna
-(includes överst, `sim_ui_init` längst ned) är simulator-specifika och ska
-**inte** med.
-
-Driver-delen (`flush_cb`, touch, tick, `lvgl_port_init`,
-`lvgl_port_render_frame`) rörs aldrig — den lever bara i `lvgl_port.c` på
-enheten respektive i `main.c` i simulatorn.
-
-När du flyttar över, kom ihåg att enheten också behöver:
-* `press_start_2p_8.c` och `press_start_2p_24.c` (intro-loggan) i
-  `components/lvgl_port/` (lägg till i komponentens `CMakeLists.txt` `SRCS`)
-* `LV_LVGL_H_INCLUDE_SIMPLE` definierad (annars `#include "lvgl/lvgl.h"` i
-  fontfilen), eller justera fontfilens include
-* `CAM_W`/`CAM_H` → 480 i `rc_protocol.h` och bottombar-höjd 32→36 (BAR_H)
-  för att matcha sim-layouten
+Simulatorns `display.h` skuggar enhetens (via include-ordningen i
+`Makefile`) och måste hålla `SCREEN_W`/`SCREEN_H` i synk med
+`scout_screen/components/display/display.h`.

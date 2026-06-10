@@ -2,10 +2,11 @@
 //
 // Den här filen ersätter driver-delen av lvgl_port.c (flush, touch, tick,
 // init, render-loop) med SDL och är ENBART för simulatorn. UI:t självt
-// byggs av sim_ui_init() i ui.c, som speglar enhetskoden.
+// byggs av lvgl_port_ui.c, samma fil som enheten kompilerar.
 
 #include "lvgl.h"
-#include "sim_screen.h"
+#include "lvgl_port_ui.h"
+#include "display.h"
 #include <SDL2/SDL.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -17,11 +18,6 @@
 #define CAM_H  480
 #define CAM_X  ((SCREEN_W - CAM_W) / 2)
 #define CAM_Y  ((SCREEN_H - CAM_H) / 2)
-
-// UI byggd i ui.c
-void sim_ui_init(void);
-void lvgl_port_ui_update(bool connected);
-void lvgl_port_intro_screen(void);
 
 static SDL_Window   *s_win;
 static SDL_Renderer *s_ren;
@@ -130,7 +126,7 @@ int main(void)
     sdl_init();
     lvgl_init();
 
-    sim_ui_init();
+    lvgl_port_ui_init();
     make_camera_box();
     lvgl_port_intro_screen();
 
