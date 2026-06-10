@@ -34,7 +34,7 @@
  */
 #define EXAMPLE_LCD_H_RES               (1024)  ///< Horizontal resolution in pixels
 #define EXAMPLE_LCD_V_RES               (600)  ///< Vertical resolution in pixels
-#define EXAMPLE_LCD_PIXEL_CLOCK_HZ      (12 * 1000 * 1000) ///< Pixel clock frequency in Hz //////////////////////// SJUKT VIKTIG Sänk till 12 om det screen tearar/artifacts
+#define EXAMPLE_LCD_PIXEL_CLOCK_HZ      (16 * 1000 * 1000) ///< Pixel clock frequency in Hz //////////////////////// SJUKT VIKTIG Sänk till 12 om det screen tearar/artifacts
 
 /**
  * @brief Color and Pixel Configuration

@@ -35,6 +35,8 @@ static void render_run(void *arg)
 {
     uint8_t last_cmd      = CMD_STOP;
     bool    was_connected = false;
+    int64_t last_cmd_us   = 0;
+    int32_t lvgl_acc_ms   = 0;
 
     watchdog_register();
 
@@ -50,15 +52,19 @@ static void render_run(void *arg)
 
         int64_t t = esp_timer_get_time();
         lvgl_port_render_frame();
-        int64_t ms = (esp_timer_get_time() - t) / 1000;
-        frame_buf_record_lvgl((int32_t)ms);
+        lvgl_acc_ms += (int32_t)((esp_timer_get_time() - t) / 1000);
 
-        uint8_t c = lvgl_port_get_cmd();
+        uint8_t c   = lvgl_port_get_cmd();
+        int64_t now = esp_timer_get_time();
         if(c != last_cmd) {
             ESP_LOGD(TAG, "RC cmd: 0x%02x", c);
             last_cmd = c;
+            cam_cmd_send(c);
+            last_cmd_us = now;
+        } else if(now - last_cmd_us >= 200000) {
+            cam_cmd_send(c);
+            last_cmd_us = now;
         }
-        cam_cmd_send(c);
 
         // Only blit when a new frame was decoded. LVGL redraws just its dirty areas
         // which don't overlap the camera region, so the last
@@ -68,9 +74,11 @@ static void render_run(void *arg)
             int64_t tb = esp_timer_get_time();
             display_blit_region(CAM_X, CAM_Y, CAM_W, CAM_H, jpeg_canvas_get());
             frame_buf_record_blit((int32_t)((esp_timer_get_time() - tb) / 1000));
+            frame_buf_record_lvgl(lvgl_acc_ms);
+            lvgl_acc_ms = 0;
             frame_buf_record_disp_frame();
         }
 
-        vTaskDelay(pdMS_TO_TICKS(10));
+        vTaskDelay(connected ? 1 : pdMS_TO_TICKS(20));
     }
 }

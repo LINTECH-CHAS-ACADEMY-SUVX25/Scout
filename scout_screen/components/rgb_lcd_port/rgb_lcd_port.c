@@ -37,7 +37,7 @@ esp_lcd_panel_handle_t waveshare_esp32_s3_rgb_lcd_init()
 
     // Configuration structure for the RGB LCD panel
     esp_lcd_rgb_panel_config_t panel_config = {
-        .clk_src = LCD_CLK_SRC_DEFAULT, // Use the default clock source
+        .clk_src = LCD_CLK_SRC_PLL240M, // Use the PLL_D2 clock source
         .timings = {
             .pclk_hz = EXAMPLE_LCD_PIXEL_CLOCK_HZ, // Pixel clock frequency in Hz
             .h_res = EXAMPLE_LCD_H_RES,            // Horizontal resolution (number of pixels per row)
