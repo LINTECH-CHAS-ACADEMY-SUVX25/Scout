@@ -1,4 +1,5 @@
 #include "stream.h"
+#include "cam_state.h"
 #include "frag_tx.h"
 #include "camera.h"
 #include "motor_cmd.h"
@@ -38,9 +39,16 @@ static void stream_run(void *arg)
 
     watchdog_register();
     uint16_t seq = 0;
+    cam_status.streaming = true;
 
     while(1) {
         watchdog_reset();
+
+        if(!cam_status.streaming) {
+            cam_state_try_resume(sock);
+            vTaskDelay(pdMS_TO_TICKS(50));
+            continue;
+        }
 
         const uint8_t *buf;
         size_t len;
@@ -60,9 +68,6 @@ static void stream_run(void *arg)
 
         frag_tx(sock, buf, (uint32_t)len, seq++);
         camera_release();
-
-        uint8_t cmd;
-        while(udp_try_recv(sock, &cmd, 1) == 1)
-            motor_cmd_send(cmd);
+        cam_state_process_cmds(sock);
     }
 }
