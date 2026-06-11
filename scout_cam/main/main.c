@@ -9,9 +9,14 @@
 
 static const char *TAG = "scout_cam";
 
+static const watchdog_config_t wtd_cfg = {
+    .timeout_ms     = 5000,
+    .idle_core_mask = 0,
+};
+
 void app_main(void)
 {
-    watchdog_init();
+    watchdog_init(&wtd_cfg);
     motor_init();
     wifi_connect();
     camera_init();

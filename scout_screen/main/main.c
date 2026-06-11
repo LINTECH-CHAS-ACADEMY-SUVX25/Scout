@@ -13,7 +13,7 @@ static const char *TAG = "screen";
 
 void app_main(void)
 {
-    watchdog_init();
+    watchdog_init(NULL);
     wifi_ap_start();
     display_init();
     lvgl_port_init();

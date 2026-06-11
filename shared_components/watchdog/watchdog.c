@@ -5,13 +5,11 @@
 
 static const char *TAG = "watchdog";
 
-void watchdog_init(void)
+void watchdog_init(const watchdog_config_t *cfg)
 {
     esp_task_wdt_config_t config = {
-        .timeout_ms     = WATCHDOG_TIMEOUT_MS,
-        // Watch every core's idle task too, so a runaway high-priority task that
-        // starves a core trips the watchdog, not only a hung registered task.
-        .idle_core_mask = (1 << configNUMBER_OF_CORES) - 1,
+        .timeout_ms     = cfg ? cfg->timeout_ms     : WATCHDOG_TIMEOUT_MS,
+        .idle_core_mask = cfg ? cfg->idle_core_mask : (uint32_t)((1 << configNUMBER_OF_CORES) - 1),
         .trigger_panic  = true,
     };
 
