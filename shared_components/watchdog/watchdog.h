@@ -1,13 +1,16 @@
 #pragma once
+#include <stdint.h>
 
-// Timeout applied to every registered task and to the per-core idle tasks.
-// Every registered task loops well under this; a longer stall means a real hang.
 #define WATCHDOG_TIMEOUT_MS 5000
 
-// Arms the task watchdog and enables a panic-reboot on timeout, so a task that
-// stops feeding it forces the system to recover. Call once at startup, before
-// any task registers.
-void watchdog_init(void);
+typedef struct {
+    uint32_t timeout_ms;
+    uint32_t idle_core_mask;
+} watchdog_config_t;
+
+// Arms the task watchdog. Pass NULL to use defaults (WATCHDOG_TIMEOUT_MS,
+// idle tasks on all cores monitored). Call once at startup before any task registers.
+void watchdog_init(const watchdog_config_t *cfg);
 
 // Registers the calling task with the task watchdog timer.
 void watchdog_register(void);

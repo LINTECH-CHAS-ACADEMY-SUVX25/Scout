@@ -2,6 +2,7 @@
 #include "rc_protocol.h"
 #include "esp_camera.h"
 #include "esp_log.h"
+#include "esp_system.h"
 
 // Driver wrapper for the AI-Thinker ESP32-CAM (OV2640).
 // Hides esp_camera_fb_t from all task code — callers only see
@@ -81,7 +82,11 @@ void camera_init(void)
         .fb_location  = CAMERA_FB_IN_PSRAM,
         .grab_mode    = CAMERA_GRAB_LATEST, // always get the newest frame, skip older ones
     };
-    ESP_ERROR_CHECK(esp_camera_init(&config));
+    esp_err_t err = esp_camera_init(&config);
+    if(err != ESP_OK) {
+    ESP_LOGE(TAG, "camera init failed (%s) — rebooting", esp_err_to_name(err));
+    esp_restart();
+    }
     camera_apply_crop();
     ESP_LOGI(TAG, "camera ready (%dx%d crop)", CAM_W, CAM_H);
 }
