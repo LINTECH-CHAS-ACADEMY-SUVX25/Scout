@@ -17,6 +17,7 @@ static const char *TAG = "wifi_sta";
 
 static EventGroupHandle_t s_wifi_events;
 static esp_timer_handle_t s_retry_timer;
+static bool               s_connected;
 #define CONNECTED_BIT BIT0
 
 static void retry_connect(void *arg)
@@ -29,14 +30,21 @@ static void on_wifi_event(void *arg, esp_event_base_t base, int32_t id, void *da
     if(base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
     } else if(base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
+        s_connected = false;
         ESP_LOGW(TAG, "disconnected — retrying in 1s");
         esp_timer_stop(s_retry_timer);
         esp_timer_start_once(s_retry_timer, RETRY_DELAY_US);
     } else if(base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *e = data;
+        s_connected = true;
         ESP_LOGI(TAG, "got IP: " IPSTR, IP2STR(&e->ip_info.ip));
         xEventGroupSetBits(s_wifi_events, CONNECTED_BIT);
     }
+}
+
+bool wifi_sta_is_connected(void)
+{
+    return s_connected;
 }
 
 void wifi_connect(void)
