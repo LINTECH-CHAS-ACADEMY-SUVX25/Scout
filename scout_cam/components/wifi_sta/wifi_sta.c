@@ -47,6 +47,14 @@ bool wifi_sta_is_connected(void)
     return s_connected;
 }
 
+int8_t wifi_sta_get_rssi(void)
+{
+    wifi_ap_record_t ap;
+    if(esp_wifi_sta_get_ap_info(&ap) == ESP_OK)
+        return ap.rssi;
+    return 0;
+}
+
 void wifi_connect(void)
 {
     s_wifi_events = xEventGroupCreate();

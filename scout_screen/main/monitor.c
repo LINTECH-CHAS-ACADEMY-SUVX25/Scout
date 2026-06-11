@@ -1,5 +1,6 @@
 #include "monitor.h"
 #include "monitor_cmds.h"
+#include "cam_diag.h"
 #include "wifi_ap.h"
 #include "uart_console.h"
 #include "freertos/FreeRTOS.h"
@@ -19,6 +20,7 @@ static void monitor_run(void *arg);
 void monitor_init(void)
 {
     uart_console_init();
+    cam_diag_init();
     xTaskCreate(monitor_run, "monitor", 3072, NULL, 2, NULL);
     ESP_LOGI(TAG, "monitor ready on UART0");
 }

@@ -3,11 +3,15 @@
 
 // State hub for scout_cam — written by the stream task, read by any task that needs cam status.
 typedef struct {
-    bool streaming;     // stream is active (not paused)
-    bool screen_online; // screen is currently sending commands
+    bool   streaming;     // stream is active (not paused)
+    bool   screen_online; // screen is currently sending commands
+    int8_t rssi_dbm;      // WiFi RSSI in dBm; updated by cam_state_update_rssi()
 } cam_status_t;
 
 extern cam_status_t cam_status;
+
+// Reads the current WiFi RSSI and stores it in cam_status.rssi_dbm.
+void cam_state_update_rssi(void);
 
 // Called from stream_run when cam_status.streaming is false.
 // Checks for WiFi reconnect or incoming command; sets cam_status.streaming = true if either occurs.

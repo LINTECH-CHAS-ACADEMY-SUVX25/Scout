@@ -6,3 +6,6 @@ void wifi_connect(void);
 
 // Returns true while the station has an IP address assigned.
 bool wifi_sta_is_connected(void);
+
+// Returns the RSSI of the connected AP in dBm, or 0 if not connected.
+int8_t wifi_sta_get_rssi(void);

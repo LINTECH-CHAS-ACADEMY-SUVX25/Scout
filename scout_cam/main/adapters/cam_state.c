@@ -3,12 +3,18 @@
 #include "wifi_sta.h"
 #include "udp.h"
 #include "esp_log.h"
+#include <stdint.h>
 
 #define SILENT_FRAMES_MAX 150
 
 static const char *TAG = "cam_state";
 
 cam_status_t cam_status;
+
+void cam_state_update_rssi(void)
+{
+    cam_status.rssi_dbm = wifi_sta_get_rssi();
+}
 
 static bool s_reconnect_pending;
 static int  s_silent_frames;
