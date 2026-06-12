@@ -23,6 +23,8 @@ static ring_buf_t s_bytes;
 static uint32_t          s_frame_count;
 static volatile uint32_t s_last_rx_ms;
 
+static cam_diag_pkt_t    s_cam_status;
+
 void screen_state_render_tick_init(screen_tick_t *ctx)
 {
     ctx->loop_ring              = &s_render_loop;
@@ -106,4 +108,14 @@ void screen_state_get(screen_state_t *out)
     out->frame_bytes     = ring_snap(&s_bytes);
     out->rx_fps_tenths   = ring_fps_tenths(&s_rx_interval);
     out->disp_fps_tenths = ring_fps_tenths(&s_disp);
+}
+
+void screen_state_set_cam(const cam_diag_pkt_t *pkt)
+{
+    s_cam_status = *pkt;
+}
+
+void screen_state_get_cam(cam_diag_pkt_t *out)
+{
+    *out = s_cam_status;
 }

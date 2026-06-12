@@ -1,5 +1,6 @@
 #pragma once
 #include "ring_buffer.h"
+#include "rc_protocol.h"
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -28,7 +29,6 @@ typedef struct {
 typedef struct {
     bool  cam_connected;  // camera is associated with the AP
     bool  streaming;      // frames are actively arriving
-    int8_t rssi;          // camera RSSI (dBm); 0 until populated by telemetry
 } screen_status_t;
 
 // Performance metrics snapshot returned by screen_state_get.
@@ -71,3 +71,9 @@ bool screen_state_is_streaming(void);
 
 // Copies the latest metrics snapshot into out.
 void screen_state_get(screen_state_t *out);
+
+// Diagnostics received from the cam — the screen's view of the remote node.
+// set_cam is called by the cam_diag receiver task; get_cam by readers (CAMDIAG).
+// Zero until the first packet arrives.
+void screen_state_set_cam(const cam_diag_pkt_t *pkt);
+void screen_state_get_cam(cam_diag_pkt_t *out);
