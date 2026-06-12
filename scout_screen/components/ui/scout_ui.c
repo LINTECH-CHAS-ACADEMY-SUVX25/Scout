@@ -144,6 +144,8 @@ static lv_obj_t *s_knob;
 static lv_obj_t *s_halo;
 static lv_obj_t *s_wifi_dot;
 static lv_obj_t *s_wifi_arcs[3];
+static lv_obj_t *s_link_dot;
+static lv_obj_t *s_link_lbl;
 static lv_obj_t *s_cmd_badges[5];
 static lv_obj_t *s_val_temp;
 static lv_obj_t *s_val_humi;
@@ -260,7 +262,8 @@ static lv_obj_t *make_panel(int32_t x, int32_t y, int32_t w, int32_t h)
     return p;
 }
 
-// Section header with a cyan accent mark on the left.
+// Section header with an accent mark on the left and a gradient rule that
+// fades out across the panel below the text.
 static void make_section_hdr(lv_obj_t *parent, const char *text, int32_t y)
 {
     // y-3 centres the 14px mark on the 8px text's midline (y+4)
@@ -275,6 +278,14 @@ static void make_section_hdr(lv_obj_t *parent, const char *text, int32_t y)
         lv_color_hex(COL_TEXT_MID), UI_FONT);
     lv_obj_set_style_text_letter_space(l, 2, 0);
     lv_obj_set_pos(l, PAD + 10, y);
+
+    lv_obj_t *rule = make_obj(parent);
+    lv_obj_set_size(rule, ROW_W, 1);
+    lv_obj_set_pos(rule, PAD, y + 18);
+    lv_obj_set_style_bg_color(rule, lv_color_hex(COL_ACCENT), 0);
+    lv_obj_set_style_bg_grad_color(rule, lv_color_hex(COL_PANEL), 0);
+    lv_obj_set_style_bg_grad_dir(rule, LV_GRAD_DIR_HOR, 0);
+    lv_obj_set_style_bg_opa(rule, LV_OPA_60, 0);
 }
 
 static lv_obj_t *create_joy_tick(lv_obj_t *parent, lv_align_t align,
@@ -303,8 +314,20 @@ static lv_obj_t *make_tele_row(lv_obj_t *parent, const char *key,
         lv_color_hex(COL_TEXT_MID), UI_FONT);
     lv_obj_align(k, LV_ALIGN_LEFT_MID, 0, 0);
 
-    lv_obj_t *v = make_label(row, init_val, val_color, UI_FONT);
-    lv_obj_align(v, LV_ALIGN_RIGHT_MID, 0, 0);
+    // Value sits in a raised chip so the readouts read as instruments
+    lv_obj_t *chip = lv_obj_create(row);
+    lv_obj_set_size(chip, 84, 20);
+    lv_obj_align(chip, LV_ALIGN_RIGHT_MID, 0, 0);
+    lv_obj_set_style_radius(chip, 10, 0);
+    lv_obj_set_style_bg_color(chip, lv_color_hex(COL_BADGE_BG), 0);
+    lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(chip, 1, 0);
+    lv_obj_set_style_border_color(chip, lv_color_hex(COL_LINE), 0);
+    lv_obj_set_style_pad_all(chip, 0, 0);
+    lv_obj_clear_flag(chip, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t *v = make_label(chip, init_val, val_color, UI_FONT);
+    lv_obj_align(v, LV_ALIGN_RIGHT_MID, -8, 0);
     return v;
 }
 
@@ -433,6 +456,28 @@ static void make_topbar(void)
     lv_obj_set_style_text_letter_space(logo, 6, 0);
     lv_obj_align(logo, LV_ALIGN_LEFT_MID, 14, 0);
 
+    make_vsep(topbar, LV_ALIGN_LEFT_MID, 100);
+
+    lv_obj_t *tagline = make_label(topbar, "LINTECH",
+        lv_color_hex(COL_TEXT_LO), UI_FONT);
+    lv_obj_set_style_text_letter_space(tagline, 2, 0);
+    lv_obj_align(tagline, LV_ALIGN_LEFT_MID, 116, 0);
+
+    // Link status in the centre — dot + label driven by scout_ui_update()
+    s_link_dot = make_obj(topbar);
+    lv_obj_set_size(s_link_dot, 6, 6);
+    lv_obj_align(s_link_dot, LV_ALIGN_CENTER, -36, 0);
+    lv_obj_set_style_radius(s_link_dot, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(s_link_dot, lv_color_hex(COL_BAD), 0);
+    lv_obj_set_style_bg_opa(s_link_dot, LV_OPA_COVER, 0);
+
+    s_link_lbl = make_label(topbar, "NO LINK",
+        lv_color_hex(COL_TEXT_LO), UI_FONT);
+    lv_obj_set_style_text_letter_space(s_link_lbl, 2, 0);
+    lv_obj_set_width(s_link_lbl, 80);
+    lv_obj_set_style_text_align(s_link_lbl, LV_TEXT_ALIGN_LEFT, 0);
+    lv_obj_align(s_link_lbl, LV_ALIGN_CENTER, 18, 0);
+
     // THEMES opens the theme dropdown — sits left of the separator
     lv_obj_t *themes = make_label(topbar, "THEMES",
         lv_color_hex(COL_TEXT_MID), UI_FONT);
@@ -490,6 +535,21 @@ static void make_botbar(void)
         bot_x += (i == 0) ? 110 : 50;
     }
     make_vsep(botbar, LV_ALIGN_LEFT_MID, 140);
+    make_vsep(botbar, LV_ALIGN_LEFT_MID, 246);
+
+    // Active theme — accent swatch + name, rebuilt with the UI on switch
+    lv_obj_t *swatch = make_obj(botbar);
+    lv_obj_set_size(swatch, 8, 8);
+    lv_obj_align(swatch, LV_ALIGN_LEFT_MID, 264, 0);
+    lv_obj_set_style_radius(swatch, 2, 0);
+    lv_obj_set_style_bg_color(swatch, lv_color_hex(COL_ACCENT), 0);
+    lv_obj_set_style_bg_opa(swatch, LV_OPA_COVER, 0);
+
+    lv_obj_t *theme_name = make_label(botbar, s_th->name,
+        lv_color_hex(COL_TEXT_MID), UI_FONT);
+    lv_obj_set_style_text_letter_space(theme_name, 2, 0);
+    lv_obj_align(theme_name, LV_ALIGN_LEFT_MID, 280, 0);
+
     make_vsep(botbar, LV_ALIGN_RIGHT_MID, -165);
 
     lv_obj_t *rtos_k = make_label(botbar, "RTOS",
@@ -575,6 +635,19 @@ static void make_joystick(lv_obj_t *joy_panel)
     lv_obj_set_style_border_width(joy_ring, 1, 0);
     lv_obj_set_style_border_color(joy_ring, lv_color_hex(COL_LINE), 0);
     lv_obj_set_style_border_opa(joy_ring, LV_OPA_COVER, 0);
+
+    // Accent dots at the ring's diagonals complete the dial. 51 ≈ 72/√2,
+    // the diagonal offset from the ring centre (73, 73).
+    for(int dy = -1; dy <= 1; dy += 2) {
+        for(int dx = -1; dx <= 1; dx += 2) {
+            lv_obj_t *d = make_obj(joy_ring);
+            lv_obj_set_size(d, 3, 3);
+            lv_obj_set_pos(d, 73 + dx * 51 - 1, 73 + dy * 51 - 1);
+            lv_obj_set_style_radius(d, LV_RADIUS_CIRCLE, 0);
+            lv_obj_set_style_bg_color(d, lv_color_hex(COL_ACCENT), 0);
+            lv_obj_set_style_bg_opa(d, LV_OPA_50, 0);
+        }
+    }
 
     lv_obj_t *base = lv_obj_create(joy_panel);
     lv_obj_set_size(base, 130, 130);
@@ -707,6 +780,18 @@ static void make_theme_menu(void)
     }
 }
 
+// Small accent tick centred on one edge of the viewfinder, sitting in the
+// gap band outside the video region so the blit never paints over it.
+static void make_cam_tick(int32_t x, int32_t y, bool horiz)
+{
+    lv_obj_t *t = make_obj(s_root);
+    lv_obj_set_size(t, horiz ? 14 : 2, horiz ? 2 : 14);
+    lv_obj_set_pos(t, x, y);
+    lv_obj_set_style_radius(t, 1, 0);
+    lv_obj_set_style_bg_color(t, lv_color_hex(COL_ACCENT), 0);
+    lv_obj_set_style_bg_opa(t, LV_OPA_70, 0);
+}
+
 // Viewfinder corners — the video is blitted between them by render.c.
 static void make_cam_corners(void)
 {
@@ -719,6 +804,11 @@ static void make_cam_corners(void)
     make_cam_corner(CAM_X + CAM_W + CAM_GAP - CAM_CORNER,
                     CAM_Y + CAM_H + CAM_GAP - CAM_CORNER,
                     LV_BORDER_SIDE_BOTTOM | LV_BORDER_SIDE_RIGHT);
+
+    make_cam_tick(CAM_X + CAM_W / 2 - 7, CAM_Y - CAM_GAP + 1,        true);
+    make_cam_tick(CAM_X + CAM_W / 2 - 7, CAM_Y + CAM_H + CAM_GAP - 3, true);
+    make_cam_tick(CAM_X - CAM_GAP + 1,        CAM_Y + CAM_H / 2 - 7, false);
+    make_cam_tick(CAM_X + CAM_W + CAM_GAP - 3, CAM_Y + CAM_H / 2 - 7, false);
 }
 
 // Builds the full UI under a fresh s_root. Called at init and again after
@@ -767,6 +857,12 @@ void scout_ui_update(uint8_t wifi_level)
             lv_color_hex(wifi_level > (uint8_t)i ? COL_TEXT_HI : COL_LINE),
             LV_PART_MAIN);
     }
+
+    lv_label_set_text(s_link_lbl, wifi_level ? "LIVE" : "NO LINK");
+    lv_obj_set_style_text_color(s_link_lbl,
+        lv_color_hex(wifi_level ? COL_TEXT_MID : COL_TEXT_LO), 0);
+    lv_obj_set_style_bg_color(s_link_dot,
+        lv_color_hex(wifi_level ? COL_GOOD : COL_BAD), 0);
 }
 
 void scout_ui_intro_screen(uint8_t total_steps)
