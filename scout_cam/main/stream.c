@@ -50,6 +50,13 @@ static void stream_run(void *arg)
             continue;
         }
 
+        // Degraded mode (camera fault): no frames to send, but the RC link stays alive.
+        if(cam_status.camera_fault) {
+            cam_state_process_cmds(sock);
+            vTaskDelay(pdMS_TO_TICKS(20));
+            continue;
+        }
+
         const uint8_t *buf;
         size_t len;
         if(!camera_capture(&buf, &len)) {

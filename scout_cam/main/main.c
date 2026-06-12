@@ -1,9 +1,10 @@
 #include "wifi_sta.h"
-#include "camera.h"
+#include "cam_state.h"
 #include "motor.h"
 #include "stream.h"
 #include "telemetry.h"
 #include "watchdog.h"
+#include "reset_info.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
@@ -17,10 +18,11 @@ static const watchdog_config_t wtd_cfg = {
 
 void app_main(void)
 {
+    reset_info_log();
     watchdog_init(&wtd_cfg);
     motor_init();
     wifi_connect();
-    camera_init();
+    cam_state_camera_start();
     stream_init();
     telemetry_init();
     vTaskDelete(NULL);

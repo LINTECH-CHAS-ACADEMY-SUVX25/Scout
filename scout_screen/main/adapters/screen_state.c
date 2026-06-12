@@ -153,3 +153,4 @@ void screen_state_get_cam(cam_diag_pkt_t *out)
 {
     *out = s_cam_status;
 }
+
