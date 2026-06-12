@@ -14,7 +14,7 @@ static const char *TAG = "screen";
 
 void app_main(void)
 {
-    watchdog_init();
+    watchdog_init(NULL);
     display_init();
     lvgl_port_init();
     scout_ui_init();

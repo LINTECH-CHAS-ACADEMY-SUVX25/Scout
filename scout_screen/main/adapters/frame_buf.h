@@ -3,25 +3,6 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-typedef struct {
-    uint32_t frame_count;
-    uint32_t last_frame_bytes;
-    int32_t  last_transfer_ms;
-    int32_t  last_decode_ms;
-    uint32_t avg_frame_bytes;
-    int32_t  avg_transfer_ms;
-    int32_t  avg_decode_ms;
-    int32_t  last_blit_ms;
-    int32_t  avg_blit_ms;
-    int32_t  last_lvgl_ms;
-    int32_t  avg_lvgl_ms;
-    uint32_t last_interval_ms;      // ms since the previous complete frame arrived
-    uint32_t avg_interval_ms;       // rolling average of the receive interval
-    uint32_t last_disp_interval_ms; // ms since the previous frame was displayed
-    uint32_t rx_fps_tenths;    // rate at which complete frames arrive from camera
-    uint32_t disp_fps_tenths;  // rate at which frames are actually decoded and displayed
-} stream_stats_t;
-
 // Allocates PSRAM ping-pong buffers and packet receive buffer; creates the frame mutex.
 void     frame_buf_init(void);
 
@@ -32,20 +13,13 @@ uint8_t *frame_buf_asm(void);
 uint8_t *frame_buf_pkt(void);
 
 // Swaps the assembled frame in for decoding when the decoder is free; drops it otherwise.
-void     frame_buf_publish(uint32_t len, int32_t transfer_ms);
+void     frame_buf_publish(uint32_t len);
 
-// Decodes the most recently published frame into out_buf as RGB565. Call from render_run only.
-bool     frame_buf_try_decode(uint8_t *out_buf, size_t out_size);
+// Acquires the latest published frame for decoding. Sets *src and *len, marks the buffer
+// as in-use so publish cannot overwrite it. Returns false if no new frame is ready.
+// Must be followed by exactly one frame_buf_release() call.
+bool     frame_buf_try_acquire(const uint8_t **src, uint32_t *len);
 
-// Returns true if a full frame arrived within the last 2 seconds.
-bool     frame_buf_is_connected(void);
+// Releases the decoding lock so the next published frame can be swapped in.
+void     frame_buf_release(void);
 
-// Records that a frame was fully rendered (decode + blit complete); updates disp_fps_tenths.
-void     frame_buf_record_disp_frame(void);
-
-// Records blit and LVGL render durations from render_run.
-void     frame_buf_record_blit(int32_t ms);
-void     frame_buf_record_lvgl(int32_t ms);
-
-// Copies the latest stream statistics into out.
-void     frame_buf_get_stats(stream_stats_t *out);

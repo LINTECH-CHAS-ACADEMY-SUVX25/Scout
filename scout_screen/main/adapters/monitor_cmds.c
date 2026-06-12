@@ -1,9 +1,11 @@
 #include "monitor_cmds.h"
+#include "cam_diag.h"
 #include "uart_console.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 static void cmd_status(const monitor_status_t *s)
 {
@@ -44,7 +46,7 @@ static void fmt_fps(char *buf, size_t size, uint32_t tenths)
         (unsigned long)(tenths / 10), (unsigned long)(tenths % 10));
 }
 
-static void stat_receive(const stream_stats_t *s)
+static void stat_receive(const screen_state_t *s)
 {
     char val[16];
     char avg[16];
@@ -52,51 +54,59 @@ static void stat_receive(const stream_stats_t *s)
     stat_header("Receive");
     stat_one("frames", s->frame_count);
 
-    snprintf(val, sizeof val, "%luB", (unsigned long)s->last_frame_bytes);
-    snprintf(avg, sizeof avg, "%luB", (unsigned long)s->avg_frame_bytes);
+    snprintf(val, sizeof val, "%ldB", (long)s->frame_bytes.last);
+    snprintf(avg, sizeof avg, "%ldB", (long)s->frame_bytes.avg);
     stat_row("frame size", val, avg);
 
-    snprintf(val, sizeof val, "%ldms", (long)s->last_transfer_ms);
-    snprintf(avg, sizeof avg, "%ldms", (long)s->avg_transfer_ms);
+    snprintf(val, sizeof val, "%ldms", (long)s->transfer.last);
+    snprintf(avg, sizeof avg, "%ldms", (long)s->transfer.avg);
     stat_row("transfer", val, avg);
 
-    snprintf(val, sizeof val, "%lums", (unsigned long)s->last_interval_ms);
-    snprintf(avg, sizeof avg, "%lums", (unsigned long)s->avg_interval_ms);
+    snprintf(val, sizeof val, "%ldms", (long)s->rx_interval.last);
+    snprintf(avg, sizeof avg, "%ldms", (long)s->rx_interval.avg);
     stat_row("frame gap", val, avg);
 
     // max fps = 1000 / frame gap — the ceiling the display rate can never exceed
-    uint32_t max_last = s->last_interval_ms ? 10000u / s->last_interval_ms : 0;
+    uint32_t max_last = s->rx_interval.last ? 10000u / (uint32_t)s->rx_interval.last : 0;
     fmt_fps(val, sizeof val, max_last);
     fmt_fps(avg, sizeof avg, s->rx_fps_tenths);
     stat_row("max fps", val, avg);
+
+    snprintf(val, sizeof val, "%ldms", (long)s->stream_loop.last);
+    snprintf(avg, sizeof avg, "%ldms", (long)s->stream_loop.avg);
+    stat_row("loop", val, avg);
 }
 
-static void stat_render(const stream_stats_t *s)
+static void stat_render(const screen_state_t *s)
 {
     char val[16];
     char avg[16];
 
     stat_header("Render");
 
-    snprintf(val, sizeof val, "%ldms", (long)s->last_lvgl_ms);
-    snprintf(avg, sizeof avg, "%ldms", (long)s->avg_lvgl_ms);
+    snprintf(val, sizeof val, "%ldms", (long)s->lvgl.last);
+    snprintf(avg, sizeof avg, "%ldms", (long)s->lvgl.avg);
     stat_row("lvgl", val, avg);
 
-    snprintf(val, sizeof val, "%ldms", (long)s->last_decode_ms);
-    snprintf(avg, sizeof avg, "%ldms", (long)s->avg_decode_ms);
+    snprintf(val, sizeof val, "%ldms", (long)s->decode.last);
+    snprintf(avg, sizeof avg, "%ldms", (long)s->decode.avg);
     stat_row("decode", val, avg);
 
-    snprintf(val, sizeof val, "%ldms", (long)s->last_blit_ms);
-    snprintf(avg, sizeof avg, "%ldms", (long)s->avg_blit_ms);
+    snprintf(val, sizeof val, "%ldms", (long)s->blit.last);
+    snprintf(avg, sizeof avg, "%ldms", (long)s->blit.avg);
     stat_row("blit", val, avg);
 
-    uint32_t disp_last = s->last_disp_interval_ms ? 10000u / s->last_disp_interval_ms : 0;
+    uint32_t disp_last = s->disp.last ? 10000u / (uint32_t)s->disp.last : 0;
     fmt_fps(val, sizeof val, disp_last);
     fmt_fps(avg, sizeof avg, s->disp_fps_tenths);
     stat_row("fps", val, avg);
+
+    snprintf(val, sizeof val, "%ldms", (long)s->render_loop.last);
+    snprintf(avg, sizeof avg, "%ldms", (long)s->render_loop.avg);
+    stat_row("loop", val, avg);
 }
 
-void monitor_cmd_stream(const stream_stats_t *s)
+void monitor_cmd_stream(const screen_state_t *s)
 {
     uart_console_println("=== STREAM ===");
     stat_receive(s);
@@ -116,35 +126,50 @@ static void cmd_stream_live(void)
 {
     char up_seq[12];
     snprintf(up_seq, sizeof(up_seq), "\033[%dA", STREAM_LINE_COUNT);
-    stream_stats_t stats;
-    frame_buf_get_stats(&stats);
+    screen_state_t stats;
+    screen_state_get(&stats);
     monitor_cmd_stream(&stats);
     while(1) {
-        vTaskDelay(pdMS_TO_TICKS(500));
+        vTaskDelay(pdMS_TO_TICKS(200));
         if(uart_console_try_getchar() == 'q') break;
-        frame_buf_get_stats(&stats);
+        screen_state_get(&stats);
         uart_console_write(up_seq);
         uart_console_write("\033[J");
         monitor_cmd_stream(&stats);
     }
 }
 
+static void cmd_camdiag(void)
+{
+    const cam_diag_pkt_t *d = &cam_diag_latest;
+    uart_console_println("--- CAM DIAG ---");
+    uart_console_printfln("heap        %luB",   (unsigned long)d->free_heap);
+    uart_console_printfln("uptime      %lus",   (unsigned long)d->uptime_s);
+    uart_console_printfln("rssi        %ddBm",  (int)d->rssi_dbm);
+    uart_console_printfln("temp        %d.%02dc",
+                          d->temp_cdeg / 100, abs(d->temp_cdeg % 100));
+    uart_console_printfln("humidity    %d%%",   (int)d->humidity_pct);
+    uart_console_printfln("pressure    %luPa",  (unsigned long)d->pressure_pa);
+}
+
 static void cmd_help(void)
 {
     uart_console_println("commands:");
-    uart_console_println("  STATUS  uptime, heap, WiFi clients, stream connection");
-    uart_console_println("  STREAM  live stream stats (q to exit)");
-    uart_console_println("  DIAG    heap watermarks, task count");
-    uart_console_println("  HELP    this list");
+    uart_console_println("  STATUS   uptime, heap, WiFi clients, stream connection");
+    uart_console_println("  STREAM   live stream stats (q to exit)");
+    uart_console_println("  DIAG     heap watermarks, task count");
+    uart_console_println("  CAMDIAG  cam heap, uptime, RSSI, sensor data");
+    uart_console_println("  HELP     this list");
 }
 
 void monitor_dispatch(const char           *line,
                       const monitor_status_t *status,
                       const monitor_diag_t   *diag)
 {
-    if     (strcmp(line, "STATUS") == 0) cmd_status(status);
-    else if(strcmp(line, "STREAM") == 0) cmd_stream_live();
-    else if(strcmp(line, "DIAG")   == 0) cmd_diag(diag);
-    else if(strcmp(line, "HELP")   == 0) cmd_help();
+    if     (strcmp(line, "STATUS")  == 0) cmd_status(status);
+    else if(strcmp(line, "STREAM")  == 0) cmd_stream_live();
+    else if(strcmp(line, "DIAG")    == 0) cmd_diag(diag);
+    else if(strcmp(line, "CAMDIAG") == 0) cmd_camdiag();
+    else if(strcmp(line, "HELP")    == 0) cmd_help();
     else uart_console_printfln("unknown command '%s' — try HELP", line);
 }

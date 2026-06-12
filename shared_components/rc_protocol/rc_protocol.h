@@ -1,4 +1,5 @@
 #pragma once
+#include <stdint.h>
 
 // Network identity
 #define AP_SSID     "Scout_AP"
@@ -19,6 +20,20 @@
 // buffer sizes and the screen blit region from these constants.
 #define CAM_W        480
 #define CAM_H        480
+
+// Diagnostics port — cam sends cam_diag_pkt_t to screen every 2 s
+#define DIAG_PORT    3336
+
+// Diagnostics packet sent from scout_cam to scout_screen over DIAG_PORT.
+// Sensor fields (temp/humidity/pressure) are zero until BME280 is wired (#54).
+typedef struct __attribute__((packed)) {
+    int16_t  temp_cdeg;     // temperature in 0.01 °C
+    uint8_t  humidity_pct;  // relative humidity 0-100 %
+    uint32_t pressure_pa;   // atmospheric pressure in Pa
+    uint32_t free_heap;     // free heap in bytes
+    int8_t   rssi_dbm;      // WiFi RSSI in dBm
+    uint32_t uptime_s;      // uptime in seconds
+} cam_diag_pkt_t;
 
 // UDP video fragmentation — shared so cam and screen never drift apart
 #define FRAME_MAGIC  0xAB
