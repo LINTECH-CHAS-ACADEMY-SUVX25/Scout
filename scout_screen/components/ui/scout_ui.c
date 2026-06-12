@@ -41,6 +41,11 @@
 #define BADGE_GAP   7
 #define BADGE_STEP  (BADGE_W + BADGE_GAP)
 
+// Themes dropdown — card under the topbar's right side
+#define MENU_W      150
+#define MENU_ITEM_H 34
+#define MENU_PAD    6
+
 // Telemetry card — rows sit inside a raised card with hairline separators
 #define CARD_PAD    12
 #define TELE_ROW_W  (ROW_W - 2 * CARD_PAD - 2)
@@ -63,20 +68,53 @@
 #define CAM_GAP     8
 #define CAM_CORNER  22
 
-// Palette — dark tech / premium
-#define COL_BG         0x0A0E14
-#define COL_BAR        0x0D1117
-#define COL_PANEL      0x141A23
-#define COL_LINE       0x232B36
-#define COL_ACCENT     0x22D3EE
-#define COL_ACCENT_DEEP 0x0891B2   // gradient start for the loading fill
-#define COL_TEXT_HI    0xE6EDF3
-#define COL_TEXT_MID   0x9BA7B4
-#define COL_TEXT_LO    0x5C6773
-#define COL_GOOD       0x34D399
-#define COL_BAD        0xF87171
-#define COL_BADGE_BG   0x1B2230
-#define COL_BADGE_ON   0x10222A
+// Palette — dark tech / premium. One entry per selectable theme in the
+// THEMES dropdown; the COL_* macros below read from the active theme so the
+// widget builders stay palette-agnostic. Switching theme rebuilds the UI.
+typedef struct {
+    const char *name;
+    uint32_t bg, bar, panel, line, accent, accent_deep;
+    uint32_t text_hi, text_mid, text_lo, good, bad;
+    uint32_t badge_bg, badge_on;
+} ui_theme_t;
+
+static const ui_theme_t s_themes[] = {
+    { .name = "SONAR",
+      .bg = 0x0A0E14, .bar = 0x0D1117, .panel = 0x141A23, .line = 0x232B36,
+      .accent = 0x22D3EE, .accent_deep = 0x0891B2,
+      .text_hi = 0xE6EDF3, .text_mid = 0x9BA7B4, .text_lo = 0x5C6773,
+      .good = 0x34D399, .bad = 0xF87171,
+      .badge_bg = 0x1B2230, .badge_on = 0x10222A },
+    { .name = "DESERT",
+      .bg = 0x120C05, .bar = 0x170F07, .panel = 0x211609, .line = 0x3B2C16,
+      .accent = 0xFFB454, .accent_deep = 0xB45309,
+      .text_hi = 0xF3EAD9, .text_mid = 0xB7A88C, .text_lo = 0x77654A,
+      .good = 0x34D399, .bad = 0xF87171,
+      .badge_bg = 0x2B1F0E, .badge_on = 0x2A1C08 },
+    { .name = "NIGHT OPS",
+      .bg = 0x06100A, .bar = 0x09140D, .panel = 0x0E1F14, .line = 0x1F3A29,
+      .accent = 0x4ADE80, .accent_deep = 0x15803D,
+      .text_hi = 0xE3F2E8, .text_mid = 0x96B7A1, .text_lo = 0x567A64,
+      .good = 0x34D399, .bad = 0xF87171,
+      .badge_bg = 0x12291B, .badge_on = 0x0E2415 },
+};
+#define THEME_COUNT (sizeof(s_themes) / sizeof(s_themes[0]))
+
+static const ui_theme_t *s_th = &s_themes[0];
+
+#define COL_BG          (s_th->bg)
+#define COL_BAR         (s_th->bar)
+#define COL_PANEL       (s_th->panel)
+#define COL_LINE        (s_th->line)
+#define COL_ACCENT      (s_th->accent)
+#define COL_ACCENT_DEEP (s_th->accent_deep)   // gradient start for the loading fill
+#define COL_TEXT_HI     (s_th->text_hi)
+#define COL_TEXT_MID    (s_th->text_mid)
+#define COL_TEXT_LO     (s_th->text_lo)
+#define COL_GOOD        (s_th->good)
+#define COL_BAD         (s_th->bad)
+#define COL_BADGE_BG    (s_th->badge_bg)
+#define COL_BADGE_ON    (s_th->badge_on)
 
 #define XSTR(x) STR(x)
 #define STR(x)  #x
@@ -92,6 +130,10 @@ static volatile uint8_t s_cmd = CMD_STOP;
 
 // Widget handles
 
+static lv_obj_t *s_root;          // holds the whole UI; deleted and rebuilt on theme switch
+static lv_obj_t *s_theme_menu;
+static uint8_t   s_pending_theme;
+static uint8_t   s_wifi_level;
 static lv_obj_t *s_intro_overlay;
 static lv_obj_t *s_intro_bar_fill;
 static lv_obj_t *s_intro_status;
@@ -194,7 +236,7 @@ static lv_obj_t *make_wifi_arc(lv_obj_t *parent, int32_t d, int32_t cx, int32_t 
 // Accent corner bracket framing the camera area like a viewfinder.
 static void make_cam_corner(int32_t x, int32_t y, lv_border_side_t side)
 {
-    lv_obj_t *c = make_obj(lv_scr_act());
+    lv_obj_t *c = make_obj(s_root);
     lv_obj_set_size(c, CAM_CORNER, CAM_CORNER);
     lv_obj_set_pos(c, x, y);
     lv_obj_set_style_border_width(c, 2, 0);
@@ -206,7 +248,7 @@ static void make_cam_corner(int32_t x, int32_t y, lv_border_side_t side)
 // Floating rounded panel — the shared card style for the corner widgets.
 static lv_obj_t *make_panel(int32_t x, int32_t y, int32_t w, int32_t h)
 {
-    lv_obj_t *p = make_obj(lv_scr_act());
+    lv_obj_t *p = make_obj(s_root);
     lv_obj_set_size(p, w, h);
     lv_obj_set_pos(p, x, y);
     lv_obj_set_style_radius(p, 8, 0);
@@ -343,12 +385,41 @@ static void intro_close_cb(lv_timer_t *t)
     s_intro_overlay = NULL;
 }
 
+// Themes dropdown events — selecting a theme rebuilds the whole UI with the
+// new palette. The rebuild runs from a one-shot timer, never from the item's
+// own callback, since the rebuild deletes the object firing the event.
+
+static void theme_apply_cb(lv_timer_t *t)
+{
+    (void)t;
+    scout_ui_set_theme(s_pending_theme);
+}
+
+static void theme_item_event(lv_event_t *e)
+{
+    s_pending_theme = (uint8_t)(uintptr_t)lv_event_get_user_data(e);
+    lv_obj_add_flag(s_theme_menu, LV_OBJ_FLAG_HIDDEN);
+    lv_timer_t *t = lv_timer_create(theme_apply_cb, 0, NULL);
+    lv_timer_set_repeat_count(t, 1);
+}
+
+static void themes_event(lv_event_t *e)
+{
+    (void)e;
+    if(lv_obj_has_flag(s_theme_menu, LV_OBJ_FLAG_HIDDEN)) {
+        lv_obj_clear_flag(s_theme_menu, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(s_theme_menu);
+    } else {
+        lv_obj_add_flag(s_theme_menu, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
 // UI assembly — one builder per visible module, called from scout_ui_init
 
 // Topbar — floating card with the brand and the WiFi signal symbol.
 static void make_topbar(void)
 {
-    lv_obj_t *topbar = make_obj(lv_scr_act());
+    lv_obj_t *topbar = make_obj(s_root);
     lv_obj_set_size(topbar, SCREEN_W - 2 * PANEL_GAP, BAR_H);
     lv_obj_align(topbar, LV_ALIGN_TOP_MID, 0, PANEL_GAP);
     lv_obj_set_style_radius(topbar, 8, 0);
@@ -361,6 +432,15 @@ static void make_topbar(void)
         lv_color_hex(COL_ACCENT), UI_FONT);
     lv_obj_set_style_text_letter_space(logo, 6, 0);
     lv_obj_align(logo, LV_ALIGN_LEFT_MID, 14, 0);
+
+    // THEMES opens the theme dropdown — sits left of the separator
+    lv_obj_t *themes = make_label(topbar, "THEMES",
+        lv_color_hex(COL_TEXT_MID), UI_FONT);
+    lv_obj_set_style_text_letter_space(themes, 2, 0);
+    lv_obj_align(themes, LV_ALIGN_RIGHT_MID, -66, 0);
+    lv_obj_add_flag(themes, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(themes, 10);   // the 8px label alone is a small tap target
+    lv_obj_add_event_cb(themes, themes_event, LV_EVENT_CLICKED, NULL);
 
     make_vsep(topbar, LV_ALIGN_RIGHT_MID, -52);
 
@@ -386,7 +466,7 @@ static void make_topbar(void)
 // Bottombar — floating card with the network facts and the RTOS tag.
 static void make_botbar(void)
 {
-    lv_obj_t *botbar = make_obj(lv_scr_act());
+    lv_obj_t *botbar = make_obj(s_root);
     lv_obj_set_size(botbar, SCREEN_W - 2 * PANEL_GAP, BAR_H);
     lv_obj_align(botbar, LV_ALIGN_BOTTOM_MID, 0, -PANEL_GAP);
     lv_obj_set_style_radius(botbar, 8, 0);
@@ -582,6 +662,51 @@ static void make_joy_panel(void)
     make_joystick(joy_panel);
 }
 
+// Themes dropdown — floating card under the topbar's right side, hidden
+// until THEMES is tapped. Each item is labelled in its theme's accent colour;
+// a dot marks the active theme.
+static void make_theme_menu(void)
+{
+    s_theme_menu = make_obj(s_root);
+    lv_obj_set_size(s_theme_menu, MENU_W, THEME_COUNT * MENU_ITEM_H + 2 * MENU_PAD);
+    lv_obj_set_pos(s_theme_menu, SCREEN_W - PANEL_GAP - MENU_W - 6, PANEL_GAP + BAR_H + 4);
+    lv_obj_set_style_radius(s_theme_menu, 8, 0);
+    lv_obj_set_style_bg_color(s_theme_menu, lv_color_hex(COL_BAR), 0);
+    lv_obj_set_style_bg_opa(s_theme_menu, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(s_theme_menu, 1, 0);
+    lv_obj_set_style_border_color(s_theme_menu, lv_color_hex(COL_LINE), 0);
+    lv_obj_add_flag(s_theme_menu, LV_OBJ_FLAG_HIDDEN);
+
+    for(uint8_t i = 0; i < THEME_COUNT; i++) {
+        lv_obj_t *item = lv_obj_create(s_theme_menu);
+        lv_obj_set_size(item, MENU_W - 2 * MENU_PAD, MENU_ITEM_H);
+        lv_obj_set_pos(item, MENU_PAD, MENU_PAD + i * MENU_ITEM_H);
+        lv_obj_set_style_radius(item, 6, 0);
+        lv_obj_set_style_border_width(item, 0, 0);
+        lv_obj_set_style_pad_all(item, 0, 0);
+        lv_obj_set_style_bg_opa(item, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_bg_color(item, lv_color_hex(COL_BADGE_ON), LV_STATE_PRESSED);
+        lv_obj_set_style_bg_opa(item, LV_OPA_COVER, LV_STATE_PRESSED);
+        lv_obj_clear_flag(item, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_event_cb(item, theme_item_event, LV_EVENT_CLICKED,
+                            (void *)(uintptr_t)i);
+
+        lv_obj_t *l = make_label(item, s_themes[i].name,
+            lv_color_hex(s_themes[i].accent), UI_FONT);
+        lv_obj_set_style_text_letter_space(l, 2, 0);
+        lv_obj_align(l, LV_ALIGN_LEFT_MID, 10, 0);
+
+        if(&s_themes[i] == s_th) {
+            lv_obj_t *dot = make_obj(item);
+            lv_obj_set_size(dot, 4, 4);
+            lv_obj_align(dot, LV_ALIGN_RIGHT_MID, -10, 0);
+            lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+            lv_obj_set_style_bg_color(dot, lv_color_hex(s_themes[i].accent), 0);
+            lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+        }
+    }
+}
+
 // Viewfinder corners — the video is blitted between them by render.c.
 static void make_cam_corners(void)
 {
@@ -596,24 +721,45 @@ static void make_cam_corners(void)
                     LV_BORDER_SIDE_BOTTOM | LV_BORDER_SIDE_RIGHT);
 }
 
-void scout_ui_init(void)
+// Builds the full UI under a fresh s_root. Called at init and again after
+// each theme switch, so everything here must derive its colours from s_th.
+static void build_ui(void)
 {
     make_stripe_tile();
 
     lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(COL_BG), 0);
     lv_obj_set_style_bg_opa(lv_scr_act(), LV_OPA_COVER, 0);
 
+    s_root = make_obj(lv_scr_act());
+    lv_obj_set_size(s_root, SCREEN_W, SCREEN_H);
+    lv_obj_set_pos(s_root, 0, 0);
+
     make_topbar();
     make_botbar();
     make_tele_panel();
     make_joy_panel();
     make_cam_corners();
+    make_theme_menu();   // last so the dropdown opens on top of everything
+}
+
+void scout_ui_init(void)
+{
+    build_ui();
+}
+
+void scout_ui_set_theme(uint8_t idx)
+{
+    s_th = &s_themes[idx % THEME_COUNT];
+    lv_obj_del(s_root);
+    build_ui();
+    scout_ui_update(s_wifi_level);
 }
 
 // Future: scout_ui_update(float temp, float humi, float pres, uint8_t wifi_level)
 // when cam sends sensor data
 void scout_ui_update(uint8_t wifi_level)
 {
+    s_wifi_level = wifi_level;   // re-applied after a theme rebuild
     lv_obj_set_style_bg_color(s_wifi_dot,
         lv_color_hex(wifi_level ? COL_TEXT_HI : COL_BAD), 0);
     for(int i = 0; i < 3; i++) {

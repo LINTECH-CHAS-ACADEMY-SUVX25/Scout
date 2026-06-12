@@ -18,7 +18,7 @@ som ändrats. `make clean` tömmer `build/`.
 
 Tangenter i fönstret:
 * **c** — stega wifi-signalnivån 0-3 (testar `lvgl_port_ui_update`)
-* **t** — stega färgtemat CYAN → AMBER → GREEN (samma byte som
+* **t** — stega färgtemat SONAR → DESERT → NIGHT OPS (samma byte som
   THEMES-dropdownen i topbaren gör)
 * **q** / **Esc** — avsluta
 

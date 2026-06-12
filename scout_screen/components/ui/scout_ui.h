@@ -18,5 +18,9 @@ void    scout_ui_intro_step(const char *label);
 // Updates the WiFi signal symbol: 0 none (red dot), 1 low, 2 mid, 3 full.
 void    scout_ui_update(uint8_t wifi_level);
 
+// Switches colour theme (wraps modulo the theme count) and rebuilds the UI.
+// Also reachable from the THEMES dropdown in the topbar.
+void    scout_ui_set_theme(uint8_t idx);
+
 // Returns the current RC command byte derived from the joystick position.
 uint8_t scout_ui_get_cmd(void);
