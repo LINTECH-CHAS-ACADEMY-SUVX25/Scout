@@ -25,6 +25,7 @@ static volatile uint8_t s_cmd = CMD_STOP;
 
 static lv_obj_t *s_intro_overlay;
 static lv_obj_t *s_intro_bar_fill;
+static lv_obj_t *s_signal_lost_overlay;
 static lv_obj_t *s_knob;
 static lv_obj_t *s_halo;
 static lv_obj_t *s_conn_dot;
@@ -198,6 +199,14 @@ void lvgl_port_ui_update(bool connected)
     lv_obj_set_style_bg_color(s_conn_dot,
         connected ? lv_color_hex(0x4CAF50) : lv_color_hex(0xE24B4A), 0);
     lv_label_set_text(s_conn_label, connected ? "connected" : "waiting...");
+}
+
+void lvgl_port_signal_lost(bool lost)
+{
+    if(lost)
+        lv_obj_clear_flag(s_signal_lost_overlay, LV_OBJ_FLAG_HIDDEN);
+    else
+        lv_obj_add_flag(s_signal_lost_overlay, LV_OBJ_FLAG_HIDDEN);
 }
 
 // UI init — trivially sequential widget creation (~200 lines, accepted exception)
@@ -418,6 +427,18 @@ static void lvgl_port_ui_init(void)
     lv_obj_set_style_border_side(right, LV_BORDER_SIDE_LEFT, 0);
     lv_obj_set_style_border_color(right, lv_color_hex(0xE8E8E4), 0);
     lv_obj_set_style_radius(right, 0, 0);
+
+    s_signal_lost_overlay = make_obj(lv_scr_act());
+    lv_obj_set_size(s_signal_lost_overlay, VIDEO_W, CONTENT_H);
+    lv_obj_set_pos(s_signal_lost_overlay, LEFT_W, CONTENT_Y);
+    lv_obj_set_style_bg_color(s_signal_lost_overlay, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(s_signal_lost_overlay, LV_OPA_COVER, 0);
+    lv_obj_add_flag(s_signal_lost_overlay, LV_OBJ_FLAG_HIDDEN);
+
+    lv_obj_t *sig_lbl = make_label(s_signal_lost_overlay, "SIGNAL LOST",
+        lv_color_hex(0xFFFFFF), &lv_font_montserrat_48);
+    lv_obj_set_style_text_letter_space(sig_lbl, 6, 0);
+    lv_obj_align(sig_lbl, LV_ALIGN_CENTER, 0, 0);
 }
 
 // Driver init

@@ -35,6 +35,7 @@ void render_init(void)
 static void render_run(void *arg)
 {
     bool was_connected = false;
+    bool was_streaming = false;
 
     watchdog_register();
 
@@ -45,9 +46,14 @@ static void render_run(void *arg)
         bool cam_connected = screen_status.cam_connected;
         if(cam_connected != was_connected) {
             lvgl_port_ui_update(cam_connected);
-            // TODO: trigger LVGL disconnected scene over camera region
         }
         was_connected = cam_connected;
+
+        bool streaming = screen_status.streaming;
+        if(streaming != was_streaming) {
+            lvgl_port_signal_lost(!streaming);
+        }
+        was_streaming = streaming;
 
         lvgl_port_render_frame();
         screen_state_tick_split(&s_tick, &s_tick.lvgl);
@@ -55,7 +61,7 @@ static void render_run(void *arg)
         // TODO: return x/y joystick values (-255..255) and map to CMD + PWM strength
         cam_cmd_send_throttled(lvgl_port_get_cmd());
 
-        // Only blit when a new frame was decoded. LVGL redraws just its dirty areas which don't overlap the camera region
+        // Gate blit on streaming so the last buffered frame can't overwrite the signal-lost overlay on the iteration it first appears.
         const uint8_t *src;
         uint32_t       src_len;
         if(frame_buf_try_acquire(&src, &src_len)) {
@@ -65,7 +71,7 @@ static void render_run(void *arg)
             screen_state_tick_split(&s_tick, &s_tick.decode);
             frame_buf_release();
 
-            if(ok) {
+            if(ok && streaming) {
                 display_blit_region(CAM_X, CAM_Y, CAM_W, CAM_H, jpeg_canvas_get());
                 screen_state_tick_split(&s_tick, &s_tick.blit);
             }
