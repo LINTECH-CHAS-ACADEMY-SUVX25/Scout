@@ -11,13 +11,13 @@ static const char *TAG = "cam_state";
 
 cam_status_t cam_status;
 
+static bool s_reconnect_pending;
+static int  s_silent_frames;
+
 void cam_state_update_rssi(void)
 {
     cam_status.rssi_dbm = wifi_sta_get_rssi();
 }
-
-static bool s_reconnect_pending;
-static int  s_silent_frames;
 
 void cam_state_try_resume(int sock)
 {

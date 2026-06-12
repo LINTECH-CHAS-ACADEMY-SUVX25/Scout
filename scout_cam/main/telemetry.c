@@ -16,6 +16,14 @@
 
 static const char *TAG = "telemetry";
 
+static void telemetry_run(void *arg);
+
+void telemetry_init(void)
+{
+    xTaskCreate(telemetry_run, "telemetry", 2048, NULL, 2, NULL);
+    ESP_LOGI(TAG, "sending diagnostics to %s:%d every %d ms", S3_IP, DIAG_PORT, DIAG_INTERVAL_MS);
+}
+
 static void telemetry_run(void *arg)
 {
     int sock = udp_open(0);
@@ -35,10 +43,4 @@ static void telemetry_run(void *arg)
         udp_tx(sock, &dest, &pkt, sizeof(pkt));
         vTaskDelay(pdMS_TO_TICKS(DIAG_INTERVAL_MS));
     }
-}
-
-void telemetry_init(void)
-{
-    xTaskCreate(telemetry_run, "telemetry", 2048, NULL, 2, NULL);
-    ESP_LOGI(TAG, "sending diagnostics to %s:%d every %d ms", S3_IP, DIAG_PORT, DIAG_INTERVAL_MS);
 }
