@@ -1,4 +1,5 @@
 #pragma once
+#include <stdint.h>
 
 // Network identity
 #define AP_SSID     "Scout_AP"

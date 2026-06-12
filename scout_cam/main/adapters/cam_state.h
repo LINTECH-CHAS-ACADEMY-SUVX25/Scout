@@ -1,5 +1,6 @@
 #pragma once
 #include <stdbool.h>
+#include <stdint.h>
 
 // State hub for scout_cam — written by the stream task, read by any task that needs cam status.
 typedef struct {
