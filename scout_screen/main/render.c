@@ -35,6 +35,7 @@ void render_init(void)
 static void render_run(void *arg)
 {
     bool was_connected = false;
+    bool was_streaming = false;
 
     watchdog_register();
 
@@ -45,9 +46,14 @@ static void render_run(void *arg)
         bool cam_connected = screen_status.cam_connected;
         if(cam_connected != was_connected) {
             lvgl_port_ui_update(cam_connected);
-            // TODO: trigger LVGL disconnected scene over camera region
         }
         was_connected = cam_connected;
+
+        bool streaming = screen_status.streaming;
+        if(streaming != was_streaming) {
+            lvgl_port_signal_lost(!streaming);
+        }
+        was_streaming = streaming;
 
         lvgl_port_render_frame();
         screen_state_tick_split(&s_tick, &s_tick.lvgl);

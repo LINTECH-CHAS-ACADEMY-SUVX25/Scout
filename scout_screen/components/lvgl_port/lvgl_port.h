@@ -12,6 +12,10 @@ void    lvgl_port_intro_screen(void);
 // Updates the connection status indicator. Call when connected state changes.
 void    lvgl_port_ui_update(bool connected);
 
+// Shows or hides the "Signal lost" overlay over the camera region.
+// Call when screen_status.streaming changes.
+void    lvgl_port_signal_lost(bool lost);
+
 // Runs one LVGL render pass. Call once per render loop tick.
 void    lvgl_port_render_frame(void);
 
