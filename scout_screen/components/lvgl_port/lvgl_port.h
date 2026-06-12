@@ -12,6 +12,10 @@ void    lvgl_port_intro_screen(void);
 // Updates the connection status indicator. Call when connected state changes.
 void    lvgl_port_ui_update(bool connected);
 
+// Shows text on the overlay covering the camera region, or hides it when NULL.
+// Render task only.
+void    lvgl_port_overlay(const char *text);
+
 // Runs one LVGL render pass. Call once per render loop tick.
 void    lvgl_port_render_frame(void);
 

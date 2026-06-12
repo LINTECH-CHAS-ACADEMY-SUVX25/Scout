@@ -1,14 +1,26 @@
 #include "screen_state.h"
 #include "esp_timer.h"
+#include "esp_log.h"
 
 // Shared state hub for scout_screen tasks.
 // Centralises everything multiple tasks need to read or write: connection status,
-// performance ring buffers, and render loop timing.
+// the active scene, performance ring buffers, and render loop timing.
 // stream_run (core 0) writes screen_status; sets transfer and bytes slots each frame.
 // render_run (core 1) drives timing via screen_state_tick/tick_split with its own
 // screen_tick_t context so the two tasks never share mutable timing state.
 
+static const char *TAG = "screen_state";
+
 screen_status_t screen_status;
+
+static volatile scene_t s_scene = SCENE_BOOTING;
+
+static const char *s_scene_names[SCENE_COUNT] = {
+    [SCENE_BOOTING]      = "booting",
+    [SCENE_WAITING]      = "waiting",
+    [SCENE_STREAMING]    = "streaming",
+    [SCENE_DISCONNECTED] = "disconnected",
+};
 
 static ring_buf_t s_render_loop;
 static ring_buf_t s_stream_loop;
@@ -88,10 +100,32 @@ void screen_state_tick_split(screen_tick_t *ctx, tick_slot_t *slot)
     slot->done          = true;
 }
 
+void screen_state_set_scene(scene_t s)
+{
+    if(s == s_scene) return;
+    ESP_LOGI(TAG, "scene %s -> %s", s_scene_names[s_scene], s_scene_names[s]);
+    s_scene = s;
+}
+
+scene_t screen_state_get_scene(void)
+{
+    return s_scene;
+}
+
+const char *screen_state_scene_name(scene_t s)
+{
+    return s < SCENE_COUNT ? s_scene_names[s] : "?";
+}
+
 bool screen_state_is_streaming(void)
 {
     return s_last_rx_ms &&
            (uint32_t)(esp_timer_get_time() / 1000) - s_last_rx_ms < 2000;
+}
+
+bool screen_state_has_streamed(void)
+{
+    return s_last_rx_ms != 0;
 }
 
 void screen_state_get(screen_state_t *out)
