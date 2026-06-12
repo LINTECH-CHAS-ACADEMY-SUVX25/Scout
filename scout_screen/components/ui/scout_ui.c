@@ -41,11 +41,6 @@
 #define BADGE_GAP   7
 #define BADGE_STEP  (BADGE_W + BADGE_GAP)
 
-// System menu — dropdown card under the SCOUT logo in the topbar
-#define MENU_W      170
-#define MENU_ITEM_H 34
-#define MENU_PAD    6
-
 // Telemetry card — rows sit inside a raised card with hairline separators
 #define CARD_PAD    12
 #define TELE_ROW_W  (ROW_W - 2 * CARD_PAD - 2)
@@ -108,7 +103,6 @@ static lv_obj_t *s_halo;
 static lv_obj_t *s_wifi_dot;
 static lv_obj_t *s_wifi_arcs[3];
 static lv_obj_t *s_cmd_badges[5];
-static lv_obj_t *s_menu;
 static lv_obj_t *s_val_temp;
 static lv_obj_t *s_val_humi;
 static lv_obj_t *s_val_pres;
@@ -349,30 +343,9 @@ static void intro_close_cb(lv_timer_t *t)
     s_intro_overlay = NULL;
 }
 
-// System menu events — the menu is UI only so far; the power-off item just
-// closes the menu until the shutdown path exists.
-
-static void menu_item_event(lv_event_t *e)
-{
-    (void)e;
-    lv_obj_add_flag(s_menu, LV_OBJ_FLAG_HIDDEN);
-}
-
-static void logo_event(lv_event_t *e)
-{
-    (void)e;
-    if(lv_obj_has_flag(s_menu, LV_OBJ_FLAG_HIDDEN)) {
-        lv_obj_clear_flag(s_menu, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_move_foreground(s_menu);
-    } else {
-        lv_obj_add_flag(s_menu, LV_OBJ_FLAG_HIDDEN);
-    }
-}
-
 // UI assembly — one builder per visible module, called from scout_ui_init
 
-// Topbar — floating card with the brand (tap opens the system menu) and the
-// WiFi signal symbol.
+// Topbar — floating card with the brand and the WiFi signal symbol.
 static void make_topbar(void)
 {
     lv_obj_t *topbar = make_obj(lv_scr_act());
@@ -388,9 +361,6 @@ static void make_topbar(void)
         lv_color_hex(COL_ACCENT), UI_FONT);
     lv_obj_set_style_text_letter_space(logo, 6, 0);
     lv_obj_align(logo, LV_ALIGN_LEFT_MID, 14, 0);
-    lv_obj_add_flag(logo, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_ext_click_area(logo, 10);   // the 8px label alone is a small tap target
-    lv_obj_add_event_cb(logo, logo_event, LV_EVENT_CLICKED, NULL);
 
     make_vsep(topbar, LV_ALIGN_RIGHT_MID, -52);
 
@@ -411,38 +381,6 @@ static void make_topbar(void)
     for(int i = 0; i < 3; i++) {
         s_wifi_arcs[i] = make_wifi_arc(wifi_icon, 10 + 8 * i, 14, 13);
     }
-}
-
-// System menu — floating card that drops down under the SCOUT logo, hidden
-// until the logo is tapped. Same card style as the corner panels.
-static void make_menu(void)
-{
-    s_menu = make_obj(lv_scr_act());
-    lv_obj_set_size(s_menu, MENU_W, MENU_ITEM_H + 2 * MENU_PAD);
-    lv_obj_set_pos(s_menu, PANEL_GAP + 6, PANEL_GAP + BAR_H + 4);
-    lv_obj_set_style_radius(s_menu, 8, 0);
-    lv_obj_set_style_bg_color(s_menu, lv_color_hex(COL_BAR), 0);
-    lv_obj_set_style_bg_opa(s_menu, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(s_menu, 1, 0);
-    lv_obj_set_style_border_color(s_menu, lv_color_hex(COL_LINE), 0);
-    lv_obj_add_flag(s_menu, LV_OBJ_FLAG_HIDDEN);
-
-    lv_obj_t *item = lv_obj_create(s_menu);
-    lv_obj_set_size(item, MENU_W - 2 * MENU_PAD, MENU_ITEM_H);
-    lv_obj_align(item, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_radius(item, 6, 0);
-    lv_obj_set_style_border_width(item, 0, 0);
-    lv_obj_set_style_pad_all(item, 0, 0);
-    lv_obj_set_style_bg_opa(item, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_bg_color(item, lv_color_hex(COL_BADGE_ON), LV_STATE_PRESSED);
-    lv_obj_set_style_bg_opa(item, LV_OPA_COVER, LV_STATE_PRESSED);
-    lv_obj_clear_flag(item, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_event_cb(item, menu_item_event, LV_EVENT_CLICKED, NULL);
-
-    lv_obj_t *l = make_label(item, "POWER OFF",
-        lv_color_hex(COL_BAD), UI_FONT);
-    lv_obj_set_style_text_letter_space(l, 2, 0);
-    lv_obj_align(l, LV_ALIGN_LEFT_MID, 10, 0);
 }
 
 // Bottombar — floating card with the network facts and the RTOS tag.
@@ -670,7 +608,6 @@ void scout_ui_init(void)
     make_tele_panel();
     make_joy_panel();
     make_cam_corners();
-    make_menu();   // last so the dropdown opens on top of everything
 }
 
 // Future: scout_ui_update(float temp, float humi, float pres, uint8_t wifi_level)
