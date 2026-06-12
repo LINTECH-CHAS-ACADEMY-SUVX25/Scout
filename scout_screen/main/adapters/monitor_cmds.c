@@ -1,9 +1,11 @@
 #include "monitor_cmds.h"
+#include "cam_diag.h"
 #include "uart_console.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 static void cmd_status(const monitor_status_t *s)
 {
@@ -137,22 +139,37 @@ static void cmd_stream_live(void)
     }
 }
 
+static void cmd_camdiag(void)
+{
+    const cam_diag_pkt_t *d = &cam_diag_latest;
+    uart_console_println("--- CAM DIAG ---");
+    uart_console_printfln("heap        %luB",   (unsigned long)d->free_heap);
+    uart_console_printfln("uptime      %lus",   (unsigned long)d->uptime_s);
+    uart_console_printfln("rssi        %ddBm",  (int)d->rssi_dbm);
+    uart_console_printfln("temp        %d.%02dc",
+                          d->temp_cdeg / 100, abs(d->temp_cdeg % 100));
+    uart_console_printfln("humidity    %d%%",   (int)d->humidity_pct);
+    uart_console_printfln("pressure    %luPa",  (unsigned long)d->pressure_pa);
+}
+
 static void cmd_help(void)
 {
     uart_console_println("commands:");
-    uart_console_println("  STATUS  uptime, heap, WiFi clients, stream connection");
-    uart_console_println("  STREAM  live stream stats (q to exit)");
-    uart_console_println("  DIAG    heap watermarks, task count");
-    uart_console_println("  HELP    this list");
+    uart_console_println("  STATUS   uptime, heap, WiFi clients, stream connection");
+    uart_console_println("  STREAM   live stream stats (q to exit)");
+    uart_console_println("  DIAG     heap watermarks, task count");
+    uart_console_println("  CAMDIAG  cam heap, uptime, RSSI, sensor data");
+    uart_console_println("  HELP     this list");
 }
 
 void monitor_dispatch(const char           *line,
                       const monitor_status_t *status,
                       const monitor_diag_t   *diag)
 {
-    if     (strcmp(line, "STATUS") == 0) cmd_status(status);
-    else if(strcmp(line, "STREAM") == 0) cmd_stream_live();
-    else if(strcmp(line, "DIAG")   == 0) cmd_diag(diag);
-    else if(strcmp(line, "HELP")   == 0) cmd_help();
+    if     (strcmp(line, "STATUS")  == 0) cmd_status(status);
+    else if(strcmp(line, "STREAM")  == 0) cmd_stream_live();
+    else if(strcmp(line, "DIAG")    == 0) cmd_diag(diag);
+    else if(strcmp(line, "CAMDIAG") == 0) cmd_camdiag();
+    else if(strcmp(line, "HELP")    == 0) cmd_help();
     else uart_console_printfln("unknown command '%s' — try HELP", line);
 }
