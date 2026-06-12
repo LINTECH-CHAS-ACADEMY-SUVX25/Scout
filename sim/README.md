@@ -18,6 +18,8 @@ som ändrats. `make clean` tömmer `build/`.
 
 Tangenter i fönstret:
 * **c** — stega wifi-signalnivån 0-3 (testar `lvgl_port_ui_update`)
+* **t** — stega färgtemat CYAN → AMBER → GREEN (samma byte som
+  THEMES-dropdownen i topbaren gör)
 * **q** / **Esc** — avsluta
 
 Joysticken styrs med musen, precis som touch på enheten.
@@ -32,7 +34,8 @@ sig själv och visar UI:t — totalt ~5,2 s i simulatorn.
 LVGL-objekten spårar inte `lv_conf.h` och byggs annars inte om.
 
 Headless skärmdump: `SDL_VIDEODRIVER=offscreen SIM_SHOT=ut.bmp ./sim`. Lägg
-till `SIM_SHOT_MS=5500` för att spola fram förbi intron först.
+till `SIM_SHOT_MS=5500` för att spola fram förbi intron först, och
+`SIM_THEME=0|1|2` för att byta tema innan dumpen.
 
 ## Så här hänger det ihop
 

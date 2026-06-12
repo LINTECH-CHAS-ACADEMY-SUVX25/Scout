@@ -130,6 +130,11 @@ static void screenshot(const char *path)
         lv_tick_inc(20);
         lv_timer_handler();
     }
+    const char *theme = SDL_getenv("SIM_THEME");  // byt tema innan dumpen
+    if(theme) {
+        scout_ui_set_theme((uint8_t)SDL_atoi(theme));
+        lv_timer_handler();
+    }
     SDL_Surface *surf = SDL_CreateRGBSurfaceWithFormat(
         0, SCREEN_W, SCREEN_H, 16, SDL_PIXELFORMAT_RGB565);
     SDL_RenderReadPixels(s_ren, NULL, SDL_PIXELFORMAT_RGB565,
@@ -154,8 +159,9 @@ int main(void)
         return 0;
     }
 
-    bool running     = true;
-    uint8_t wifi_lvl = 0;
+    bool running      = true;
+    uint8_t wifi_lvl  = 0;
+    uint8_t theme_idx = 0;
     uint32_t start   = SDL_GetTicks();
     uint32_t last    = start;
 
@@ -171,6 +177,8 @@ int main(void)
                 } else if(k == SDLK_c) {
                     wifi_lvl = (wifi_lvl + 1) % 4;   // stega wifi-nivån 0-3
                     scout_ui_update(wifi_lvl);
+                } else if(k == SDLK_t) {
+                    scout_ui_set_theme(++theme_idx); // stega temat utan dropdownen
                 }
             }
         }
