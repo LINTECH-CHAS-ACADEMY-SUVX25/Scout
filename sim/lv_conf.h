@@ -5,12 +5,17 @@
 
 #include <stdint.h>
 
+// PC/SDL-variant av scout_screen/components/lvgl_port/lv_conf.h.
+// Speglar enhetens inställningar så UI:t renderar likadant. Skillnader:
+// inga ESP-specifika attribut (IRAM_ATTR) och ingen perf-overlay.
+
 // Display
 #define LV_COLOR_DEPTH      16
+#define LV_COLOR_16_SWAP    0
 #define LV_HOR_RES_MAX      1024
 #define LV_VER_RES_MAX      600
 
-// Memory — LV_MEM_CUSTOM 1 uses malloc which routes to PSRAM via SPIRAM_USE_MALLOC
+// Memory — vanlig malloc på PC
 #define LV_MEM_CUSTOM       1
 #define LV_MEM_CUSTOM_INCLUDE <stdlib.h>
 #define LV_MEM_CUSTOM_ALLOC   malloc
@@ -22,20 +27,11 @@
 #define LV_USE_LABEL        1
 #define LV_USE_ARC          1
 
-// Needed for transform_zoom on labels
-#define LV_DRAW_COMPLEX     1
-
 // Krävs för transform_zoom på knobben
 #define LV_USE_OBJ_TRANSFORM   1
 
-// Fonts
+// Fonts — montserrat_14 är LVGL:s default-font (kamerabox-etiketten i main.c)
 #define LV_FONT_MONTSERRAT_14  1
-
-// Performance — keep frequently called draw functions in IRAM
-#define LV_ATTRIBUTE_FAST_MEM IRAM_ATTR
-
-// Performance overlay — remove after testing
-#define LV_USE_PERF_MONITOR 1
 
 // Logging
 #define LV_USE_LOG          1

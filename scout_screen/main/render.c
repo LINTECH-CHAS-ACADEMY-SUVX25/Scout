@@ -4,6 +4,7 @@
 #include "scene.h"
 #include "cam_cmd.h"
 #include "lvgl_port.h"
+#include "scout_ui.h"
 #include "display.h"
 #include "jpeg.h"
 #include "watchdog.h"
@@ -47,7 +48,7 @@ static void render_run(void *arg)
         screen_state_tick_split(&s_tick, &s_tick.lvgl);
 
         // TODO: return x/y joystick values (-255..255) and map to CMD + PWM strength
-        cam_cmd_send_throttled(lvgl_port_get_cmd());
+        cam_cmd_send_throttled(scout_ui_get_cmd());
 
         // Only blit when a new frame was decoded. LVGL redraws just its dirty areas which don't overlap the camera region
         bool streaming = screen_status.streaming;

@@ -1,6 +1,6 @@
 #include "scene.h"
 #include "screen_state.h"
-#include "lvgl_port.h"
+#include "scout_ui.h"
 
 // Maps each scene to its UI reaction. Tasks signal mode changes from anywhere via
 // screen_state_set_scene; this file is the only place widgets react to them.
@@ -26,7 +26,7 @@ void scene_render(void)
     if(want == s_shown) return;
 
     const scene_cfg_t *cfg = &s_scenes[want];
-    lvgl_port_ui_update(cfg->cam_connected);
-    lvgl_port_overlay(cfg->overlay_text);
+    scout_ui_update(cfg->cam_connected);
+    scout_ui_overlay(cfg->overlay_text);
     s_shown = want;
 }
