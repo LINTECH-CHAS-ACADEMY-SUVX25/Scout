@@ -54,7 +54,7 @@ static void stream_run(void *arg)
         size_t len;
         if(!camera_capture(&buf, &len)) {
             ESP_LOGE(TAG, "camera capture failed");
-            motor_cmd_send(CMD_STOP);
+            motor_cmd_send(0, 0);
             vTaskDelay(pdMS_TO_TICKS(100));
             continue;
         }

@@ -130,7 +130,8 @@ LV_FONT_DECLARE(press_start_2p_96);
 #define SCENE_FONT (&press_start_2p_24)  // scene overlay text over the camera region
 #define LOGO_FONT  (&press_start_2p_96)  // intro logo
 
-static volatile uint8_t s_cmd = CMD_STOP; 
+static volatile int16_t s_joy_x;
+static volatile int16_t s_joy_y;
 
 // Widget handles
 
@@ -405,19 +406,22 @@ static void joy_event(lv_event_t *e)
         lv_obj_set_style_transform_zoom(s_knob, 210, 0);
         lv_obj_set_style_bg_color(s_knob, lv_color_hex(COL_ACCENT), 0);
 
+        s_joy_x =  (int16_t)((dx * 255) / JOY_RADIUS);
+        s_joy_y = -(int16_t)((dy * 255) / JOY_RADIUS);
+
         uint8_t cmd = CMD_STOP;
         if(dy < -15) cmd |= CMD_FORWARD;
         if(dy >  15) cmd |= CMD_BACKWARD;
         if(dx < -15) cmd |= CMD_LEFT;
         if(dx >  15) cmd |= CMD_RIGHT;
-        s_cmd = cmd;
-        update_cmd_badges(s_cmd);
+        update_cmd_badges(cmd);
     } else {
         lv_obj_align(s_knob, LV_ALIGN_CENTER, 0, 0);
         lv_obj_align(s_halo, LV_ALIGN_CENTER, 0, 0);
         lv_obj_set_style_transform_zoom(s_knob, 256, 0);
         lv_obj_set_style_bg_color(s_knob, lv_color_hex(0x3A434F), 0);
-        s_cmd = CMD_STOP;
+        s_joy_x = 0;
+        s_joy_y = 0;
         update_cmd_badges(CMD_STOP);
     }
 }
@@ -1035,4 +1039,4 @@ void scout_ui_intro_step(const char *label)
     lv_refr_now(lv_disp_get_default());
 }
 
-uint8_t scout_ui_get_cmd(void) { return s_cmd; }
+void scout_ui_get_joy(int16_t *x, int16_t *y) { *x = s_joy_x; *y = s_joy_y; }

@@ -31,5 +31,6 @@ void    scout_ui_overlay(const char *text);
 // Also reachable from the THEMES dropdown in the topbar.
 void    scout_ui_set_theme(uint8_t idx);
 
-// Returns the current RC command byte derived from the joystick position.
-uint8_t scout_ui_get_cmd(void);
+// Returns the current joystick position scaled to -255..255 per axis.
+// Positive x = right, positive y = forward (away from player).
+void scout_ui_get_joy(int16_t *x, int16_t *y);

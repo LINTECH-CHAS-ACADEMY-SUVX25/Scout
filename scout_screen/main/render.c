@@ -69,8 +69,9 @@ static void render_run(void *arg)
         lvgl_port_render_frame();
         screen_state_tick_split(&s_tick, &s_tick.lvgl);
 
-        // TODO: return x/y joystick values (-255..255) and map to CMD + PWM strength
-        cam_cmd_send_throttled(scout_ui_get_cmd());
+        int16_t jx, jy;
+        scout_ui_get_joy(&jx, &jy);
+        cam_cmd_send_throttled(jx, jy);
 
         // Only blit when a new frame was decoded. LVGL redraws just its dirty areas which don't overlap the camera region
         const uint8_t *src;
