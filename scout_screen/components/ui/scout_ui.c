@@ -1,9 +1,11 @@
 #include "scout_ui.h"
 #include "display.h"
 #include "rc_protocol.h"
+#include "cam_diag_fmt.h"
 #include "lvgl.h"
 #include <math.h>
 #include <stdbool.h>
+#include <string.h>
 
 // Owns the full UI layout — widget creation, event callbacks, and the intro
 // overlay. Compiled by both the scout_screen firmware and the PC simulator
@@ -155,6 +157,22 @@ static lv_obj_t *s_val_pres;
 static lv_obj_t *s_scene_overlay;       // covers the camera region; driven by scout_ui_overlay()
 static lv_obj_t *s_scene_label;
 static const char *s_overlay_text;      // re-applied after a theme rebuild
+
+// Telemetry readouts: each row pairs a value label with the formatter for its field.
+// last holds the text currently shown, so unchanged fields skip the LVGL repaint.
+typedef struct {
+    lv_obj_t **widget;
+    void      (*fmt)(char *out, size_t n, const cam_diag_pkt_t *d);
+    char       last[16];
+} tele_field_t;
+
+static tele_field_t s_tele[] = {
+    { &s_val_temp, cam_diag_fmt_temp, "" },
+    { &s_val_humi, cam_diag_fmt_humi, "" },
+    { &s_val_pres, cam_diag_fmt_pres, "" },
+};
+
+static cam_diag_pkt_t s_cam_diag;       // last packet, re-applied after a theme rebuild
 
 // Widget helpers
 
@@ -869,10 +887,11 @@ void scout_ui_set_theme(uint8_t idx)
     lv_obj_del(s_root);
     build_ui();
     scout_ui_update(s_wifi_level);
+    for(size_t i = 0; i < sizeof s_tele / sizeof s_tele[0]; i++)
+        s_tele[i].last[0] = '\0';   // widgets were recreated — force a repaint
+    scout_ui_update_telemetry(&s_cam_diag);
 }
 
-// Future: scout_ui_update(float temp, float humi, float pres, uint8_t wifi_level)
-// when cam sends sensor data
 void scout_ui_update(uint8_t wifi_level)
 {
     s_wifi_level = wifi_level;   // re-applied after a theme rebuild
@@ -889,6 +908,20 @@ void scout_ui_update(uint8_t wifi_level)
         lv_color_hex(wifi_level ? COL_TEXT_MID : COL_TEXT_LO), 0);
     lv_obj_set_style_bg_color(s_link_dot,
         lv_color_hex(wifi_level ? COL_GOOD : COL_BAD), 0);
+}
+
+void scout_ui_update_telemetry(const cam_diag_pkt_t *d)
+{
+    s_cam_diag = *d;
+    for(size_t i = 0; i < sizeof s_tele / sizeof s_tele[0]; i++) {
+        tele_field_t *f = &s_tele[i];
+        char buf[16];
+        f->fmt(buf, sizeof buf, d);
+        if(strcmp(buf, f->last) != 0) {
+            lv_label_set_text(*f->widget, buf);
+            memcpy(f->last, buf, sizeof f->last);
+        }
+    }
 }
 
 void scout_ui_overlay(const char *text)

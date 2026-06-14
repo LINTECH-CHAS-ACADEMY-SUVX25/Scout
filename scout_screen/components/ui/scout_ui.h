@@ -1,4 +1,5 @@
 #pragma once
+#include "rc_protocol.h"
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -17,6 +18,10 @@ void    scout_ui_intro_step(const char *label);
 
 // Updates the WiFi signal symbol: 0 none (red dot), 1 low, 2 mid, 3 full.
 void    scout_ui_update(uint8_t wifi_level);
+
+// Updates the temperature/humidity/pressure readouts from a cam diag packet.
+// Only labels whose text changed are repainted. Render task only.
+void    scout_ui_update_telemetry(const cam_diag_pkt_t *d);
 
 // Shows text on the overlay covering the camera region, or hides it when NULL.
 // Render task only.

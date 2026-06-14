@@ -101,3 +101,7 @@ void screen_state_get(screen_state_t *out);
 // Zero until the first packet arrives.
 void screen_state_set_cam(const cam_diag_pkt_t *pkt);
 void screen_state_get_cam(cam_diag_pkt_t *out);
+
+// Returns true and clears the flag if a new cam packet arrived since the last
+// call. Lock-free; called by render to refresh the telemetry readouts on arrival.
+bool screen_state_cam_dirty_take(void);

@@ -1,10 +1,10 @@
 #include "monitor_cmds.h"
 #include "uart_console.h"
+#include "cam_diag_fmt.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <string.h>
 #include <stdio.h>
-#include <stdlib.h>
 
 static void cmd_status(const monitor_status_t *s)
 {
@@ -143,15 +143,17 @@ static void cmd_camdiag(void)
 {
     cam_diag_pkt_t d;
     screen_state_get_cam(&d);
-    int t = d.temp_cdeg;
+    char buf[16];
     uart_console_println("--- CAM DIAG ---");
-    uart_console_printfln("heap        %luB",   (unsigned long)d.free_heap);
-    uart_console_printfln("uptime      %lus",   (unsigned long)d.uptime_s);
-    uart_console_printfln("rssi        %ddBm",  (int)d.rssi_dbm);
-    uart_console_printfln("temp        %s%d.%02dc",
-                          t < 0 ? "-" : "", abs(t) / 100, abs(t) % 100);
-    uart_console_printfln("humidity    %d%%",   (int)d.humidity_pct);
-    uart_console_printfln("pressure    %luPa",  (unsigned long)d.pressure_pa);
+    uart_console_printfln("heap        %luB",  (unsigned long)d.free_heap);
+    uart_console_printfln("uptime      %lus",  (unsigned long)d.uptime_s);
+    uart_console_printfln("rssi        %ddBm", (int)d.rssi_dbm);
+    cam_diag_fmt_temp(buf, sizeof buf, &d);
+    uart_console_printfln("temp        %s", buf);
+    cam_diag_fmt_humi(buf, sizeof buf, &d);
+    uart_console_printfln("humidity    %s", buf);
+    cam_diag_fmt_pres(buf, sizeof buf, &d);
+    uart_console_printfln("pressure    %s", buf);
 }
 
 static void cmd_help(void)
