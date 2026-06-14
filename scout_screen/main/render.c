@@ -24,6 +24,14 @@
 static const char *TAG = "render";
 static screen_tick_t  s_tick;
 
+static uint8_t rssi_bars(int8_t rssi_dbm)
+{
+    if(rssi_dbm >= 0 || rssi_dbm < -80) return 1;
+    if(rssi_dbm < -65)                  return 2;
+    if(rssi_dbm < -50)                  return 3;
+    return 4;
+}
+
 static void render_run(void *arg);
 
 void render_init(void)
@@ -47,6 +55,8 @@ static void render_run(void *arg)
             cam_diag_pkt_t cam;
             screen_state_get_cam(&cam);
             scout_ui_update_telemetry(&cam);
+            if(screen_state_get_scene() == SCENE_STREAMING)
+                scout_ui_update(rssi_bars(cam.rssi_dbm));
         }
 
         scene_render();

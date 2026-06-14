@@ -148,6 +148,7 @@ static lv_obj_t *s_knob;
 static lv_obj_t *s_halo;
 static lv_obj_t *s_wifi_dot;
 static lv_obj_t *s_wifi_arcs[3];
+static lv_obj_t *s_wifi_slash;
 static lv_obj_t *s_link_dot;
 static lv_obj_t *s_link_lbl;
 static lv_obj_t *s_cmd_badges[5];
@@ -529,6 +530,13 @@ static void make_topbar(void)
     for(int i = 0; i < 3; i++) {
         s_wifi_arcs[i] = make_wifi_arc(wifi_icon, 10 + 8 * i, 14, 13);
     }
+
+    static const lv_point_t slash_pts[2] = {{2, 14}, {26, 1}};
+    s_wifi_slash = lv_line_create(wifi_icon);
+    lv_line_set_points(s_wifi_slash, slash_pts, 2);
+    lv_obj_set_style_line_color(s_wifi_slash, lv_color_hex(COL_BAD), 0);
+    lv_obj_set_style_line_width(s_wifi_slash, 2, 0);
+    lv_obj_add_flag(s_wifi_slash, LV_OBJ_FLAG_HIDDEN);
 }
 
 // Bottombar — floating card with the network facts and the RTOS tag.
@@ -894,12 +902,16 @@ void scout_ui_set_theme(uint8_t idx)
 
 void scout_ui_update(uint8_t wifi_level)
 {
-    s_wifi_level = wifi_level;   // re-applied after a theme rebuild
+    s_wifi_level = wifi_level;
+    if(wifi_level == 0)
+        lv_obj_clear_flag(s_wifi_slash, LV_OBJ_FLAG_HIDDEN);
+    else
+        lv_obj_add_flag(s_wifi_slash, LV_OBJ_FLAG_HIDDEN);
     lv_obj_set_style_bg_color(s_wifi_dot,
         lv_color_hex(wifi_level ? COL_TEXT_HI : COL_BAD), 0);
     for(int i = 0; i < 3; i++) {
         lv_obj_set_style_arc_color(s_wifi_arcs[i],
-            lv_color_hex(wifi_level > (uint8_t)i ? COL_TEXT_HI : COL_LINE),
+            lv_color_hex(wifi_level > (uint8_t)(i + 1) ? COL_TEXT_HI : COL_LINE),
             LV_PART_MAIN);
     }
 
