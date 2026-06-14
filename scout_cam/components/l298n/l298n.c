@@ -1,13 +1,21 @@
 #include "l298n.h"
 #include "rc_protocol.h"
 #include "driver/gpio.h"
+#include "driver/ledc.h"
 
 // L298N H-bridge driver for the AI-Thinker ESP32-CAM board.
+// ENA and ENB are wired together to GPIO 1 (UART TX — logging stops after init).
+// Speed is controlled via LEDC duty cycle; direction via IN1-IN4.
 
 #define PIN_IN1  GPIO_NUM_12
 #define PIN_IN2  GPIO_NUM_13
 #define PIN_IN3  GPIO_NUM_14
 #define PIN_IN4  GPIO_NUM_15
+#define PIN_ENA  GPIO_NUM_1   // ENA and ENB tied together; takes over UART TX
+
+#define ENA_SPEED_MODE  LEDC_LOW_SPEED_MODE
+#define ENA_TIMER       LEDC_TIMER_1      // TIMER_0/CHANNEL_0 used by camera
+#define ENA_CHANNEL     LEDC_CHANNEL_1
 
 void l298n_init(void)
 {
@@ -20,11 +28,35 @@ void l298n_init(void)
         .intr_type    = GPIO_INTR_DISABLE,
     };
     ESP_ERROR_CHECK(gpio_config(&cfg));
-    l298n_apply(CMD_STOP);
+
+    ledc_timer_config_t timer = {
+        .speed_mode      = ENA_SPEED_MODE,
+        .timer_num       = ENA_TIMER,
+        .duty_resolution = LEDC_TIMER_8_BIT,
+        .freq_hz         = 1000,
+        .clk_cfg         = LEDC_AUTO_CLK,
+    };
+    ESP_ERROR_CHECK(ledc_timer_config(&timer));
+
+    ledc_channel_config_t ch = {
+        .speed_mode = ENA_SPEED_MODE,
+        .channel    = ENA_CHANNEL,
+        .timer_sel  = ENA_TIMER,
+        .intr_type  = LEDC_INTR_DISABLE,
+        .gpio_num   = PIN_ENA,
+        .duty       = 0,
+        .hpoint     = 0,
+    };
+    ESP_ERROR_CHECK(ledc_channel_config(&ch));
+
+    l298n_apply(CMD_STOP, 0);
 }
 
-void l298n_apply(uint8_t cmd)
+void l298n_apply(uint8_t cmd, uint8_t speed)
 {
+    ledc_set_duty(ENA_SPEED_MODE, ENA_CHANNEL, speed);
+    ledc_update_duty(ENA_SPEED_MODE, ENA_CHANNEL);
+
     bool fwd = cmd & CMD_FORWARD;
     bool bwd = cmd & CMD_BACKWARD;
     bool lft = cmd & CMD_LEFT;

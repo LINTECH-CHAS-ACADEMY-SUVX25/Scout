@@ -8,7 +8,14 @@
 #define VID_PORT    3334
 #define CMD_PORT    3335
 
-// Motor commands (1-byte values sent from screen to cam over CMD_PORT)
+// Joystick packet — screen sends this to cam over CMD_PORT (4 bytes)
+// x: -255..255, positive = right; y: -255..255, positive = forward
+typedef struct __attribute__((packed)) {
+    int16_t x;
+    int16_t y;
+} joy_pkt_t;
+
+// Motor direction bitmask — cam-internal; derived from joy_pkt_t on the cam side
 #define CMD_STOP     0x00
 #define CMD_FORWARD  0x01
 #define CMD_BACKWARD 0x02

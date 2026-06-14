@@ -11,9 +11,9 @@ void cam_cmd_bind(int sock);
 // Records the camera's source address from the first received packet. No-op thereafter.
 void cam_cmd_learn(const struct sockaddr_in *src);
 
-// Sends a 1-byte RC command to the camera. Safe to call before the camera is known.
-void cam_cmd_send(uint8_t cmd);
+// Sends a joy_pkt_t to the camera. Safe to call before the camera is known.
+void cam_cmd_send(int16_t x, int16_t y);
 
-// Sends cmd immediately on change; repeats every 200 ms if unchanged (keepalive).
-// Manages last-command state internally — call once per render loop iteration.
-void cam_cmd_send_throttled(uint8_t cmd);
+// Sends immediately when either axis changes by more than 5 units; repeats every
+// 200 ms as a keepalive. Call once per render loop iteration.
+void cam_cmd_send_throttled(int16_t x, int16_t y);
