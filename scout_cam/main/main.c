@@ -3,6 +3,7 @@
 #include "motor.h"
 #include "stream.h"
 #include "telemetry.h"
+#include "bme280.h"
 #include "watchdog.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -21,6 +22,7 @@ void app_main(void)
     motor_init();
     wifi_connect();
     camera_init();
+    bme280_init();
     stream_init();
     telemetry_init();
     vTaskDelete(NULL);
