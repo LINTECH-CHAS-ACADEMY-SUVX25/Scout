@@ -10,11 +10,62 @@
 // Connects LVGL to the Waveshare RGB LCD and GT911 touch controller.
 // The UI layout itself lives in the ui component, shared with the simulator.
 
+// Rectangle owned by the direct video blit. While s_video_lock is on, flush_cb
+// leaves these pixels untouched so an LVGL redraw (e.g. a theme rebuild) can't
+// overwrite the live frame the render task blits there.
+static int  s_lock_x, s_lock_y, s_lock_w, s_lock_h;
+static bool s_video_lock;
+
+void lvgl_port_set_video_region(int x, int y, int w, int h)
+{
+    s_lock_x = x;
+    s_lock_y = y;
+    s_lock_w = w;
+    s_lock_h = h;
+}
+
+void lvgl_port_video_lock(bool on)
+{
+    s_video_lock = on;
+}
+
 // LVGL driver callbacks
 
 static void flush_cb(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color_p)
 {
-    display_draw_bitmap(area->x1, area->y1, area->x2 + 1, area->y2 + 1, color_p);
+    int x1 = area->x1, y1 = area->y1, x2 = area->x2, y2 = area->y2;
+    int lx1 = s_lock_x, ly1 = s_lock_y;
+    int lx2 = s_lock_x + s_lock_w, ly2 = s_lock_y + s_lock_h;  // exclusive ends
+
+    // Fast path: no protection, or the band misses the locked rectangle.
+    if(!s_video_lock || x1 >= lx2 || x2 < lx1 || y1 >= ly2 || y2 < ly1) {
+        display_draw_bitmap(x1, y1, x2 + 1, y2 + 1, color_p);
+        lv_disp_flush_ready(drv);
+        return;
+    }
+
+    int bw = x2 - x1 + 1;  // band width = source row stride
+
+    // Rows above the locked rect — drawn whole.
+    if(y1 < ly1)
+        display_draw_bitmap(x1, y1, x2 + 1, ly1, color_p);
+
+    // Rows below the locked rect — drawn whole.
+    if(y2 + 1 > ly2)
+        display_draw_bitmap(x1, ly2, x2 + 1, y2 + 1, color_p + (ly2 - y1) * bw);
+
+    // Rows overlapping the locked rect — left and right segments only,
+    // leaving the locked columns (the live video) untouched.
+    int my1 = y1 > ly1 ? y1 : ly1;
+    int my2 = (y2 + 1) < ly2 ? (y2 + 1) : ly2;  // exclusive
+    for(int y = my1; y < my2; y++) {
+        lv_color_t *row = color_p + (y - y1) * bw;
+        if(lx1 > x1)              // left segment [x1, lx1)
+            display_draw_bitmap(x1, y, lx1, y + 1, row);
+        if(lx2 < x2 + 1)          // right segment [lx2, x2+1)
+            display_draw_bitmap(lx2, y, x2 + 1, y + 1, row + (lx2 - x1));
+    }
+
     lv_disp_flush_ready(drv);
 }
 
