@@ -43,6 +43,12 @@ static void render_run(void *arg)
         watchdog_reset();
         screen_state_tick(&s_tick);
 
+        if(screen_state_cam_dirty_take()) {
+            cam_diag_pkt_t cam;
+            screen_state_get_cam(&cam);
+            scout_ui_update_telemetry(&cam);
+        }
+
         scene_render();
 
         // Protect the camera region from LVGL while a live frame owns it, so a

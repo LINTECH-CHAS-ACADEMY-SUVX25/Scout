@@ -36,6 +36,7 @@ static uint32_t          s_frame_count;
 static volatile uint32_t s_last_rx_ms;
 
 static cam_diag_pkt_t    s_cam_status;
+static volatile bool     s_cam_dirty;
 
 void screen_state_render_tick_init(screen_tick_t *ctx)
 {
@@ -147,9 +148,17 @@ void screen_state_get(screen_state_t *out)
 void screen_state_set_cam(const cam_diag_pkt_t *pkt)
 {
     s_cam_status = *pkt;
+    s_cam_dirty  = true;
 }
 
 void screen_state_get_cam(cam_diag_pkt_t *out)
 {
     *out = s_cam_status;
+}
+
+bool screen_state_cam_dirty_take(void)
+{
+    bool dirty  = s_cam_dirty;
+    s_cam_dirty = false;
+    return dirty;
 }
