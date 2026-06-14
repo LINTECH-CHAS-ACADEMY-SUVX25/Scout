@@ -1,5 +1,6 @@
 #include "telemetry.h"
 #include "cam_state.h"
+#include "bme280.h"
 #include "udp.h"
 #include "rc_protocol.h"
 #include "esp_timer.h"
@@ -7,6 +8,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include <math.h>
 
 // Task — periodically sends a cam_diag_pkt_t to scout_screen over UDP.
 // Exists so the UART monitor on the screen side can show cam health without
@@ -40,6 +42,12 @@ static void telemetry_run(void *arg)
             .rssi_dbm     = cam_status.rssi_dbm,
             .uptime_s     = (uint32_t)(esp_timer_get_time() / 1000000),
         };
+        float t, h, p;
+        if(bme280_read(&t, &h, &p)) {
+            pkt.temp_cdeg    = (int16_t)lroundf(t * 100.0f);
+            pkt.humidity_pct = (uint8_t)lroundf(h);
+            pkt.pressure_pa  = (uint32_t)lroundf(p);
+        }
         udp_tx(sock, &dest, &pkt, sizeof(pkt));
         vTaskDelay(pdMS_TO_TICKS(DIAG_INTERVAL_MS));
     }
