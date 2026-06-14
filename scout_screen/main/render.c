@@ -24,6 +24,16 @@
 static const char *TAG = "render";
 static screen_tick_t  s_tick;
 
+static uint8_t joy_to_cmd(int16_t x, int16_t y)
+{
+    uint8_t cmd = CMD_STOP;
+    if(y >  112) cmd |= CMD_FORWARD;
+    if(y < -112) cmd |= CMD_BACKWARD;
+    if(x < -112) cmd |= CMD_LEFT;
+    if(x >  112) cmd |= CMD_RIGHT;
+    return cmd;
+}
+
 static uint8_t rssi_bars(int8_t rssi_dbm)
 {
     if(rssi_dbm >= 0 || rssi_dbm < -80) return 1;
@@ -69,8 +79,9 @@ static void render_run(void *arg)
         lvgl_port_render_frame();
         screen_state_tick_split(&s_tick, &s_tick.lvgl);
 
-        // TODO: return x/y joystick values (-255..255) and map to CMD + PWM strength
-        cam_cmd_send_throttled(scout_ui_get_cmd());
+        int16_t jx, jy;
+        scout_ui_get_joy(&jx, &jy);
+        cam_cmd_send_throttled(joy_to_cmd(jx, jy));
 
         // Only blit when a new frame was decoded. LVGL redraws just its dirty areas which don't overlap the camera region
         const uint8_t *src;
