@@ -14,6 +14,7 @@ static void cmd_status(const monitor_status_t *s)
     uart_console_printfln("free PSRAM   %luB", (unsigned long)s->free_psram);
     uart_console_printfln("WiFi clients %d",   s->sta_count);
     uart_console_printfln("cam stream   %s",   s->stream_connected ? "connected" : "disconnected");
+    uart_console_printfln("scene        %s",   s->scene);
 }
 
 #define LABEL_W 11   // label column width (after the 2-space row indent)
@@ -156,7 +157,7 @@ static void cmd_camdiag(void)
 static void cmd_help(void)
 {
     uart_console_println("commands:");
-    uart_console_println("  STATUS   uptime, heap, WiFi clients, stream connection");
+    uart_console_println("  STATUS   uptime, heap, WiFi clients, stream connection, scene");
     uart_console_println("  STREAM   live stream stats (q to exit)");
     uart_console_println("  DIAG     heap watermarks, task count");
     uart_console_println("  CAMDIAG  cam heap, uptime, RSSI, sensor data");

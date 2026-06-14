@@ -5,11 +5,12 @@
 
 // Snapshot of system state passed to STATUS command.
 typedef struct {
-    uint32_t uptime_s;
-    uint32_t free_heap;
-    uint32_t free_psram;
-    int      sta_count;
-    bool     stream_connected;
+    uint32_t    uptime_s;
+    uint32_t    free_heap;
+    uint32_t    free_psram;
+    int         sta_count;
+    bool        stream_connected;
+    const char *scene;
 } monitor_status_t;
 
 // Snapshot of diagnostic counters passed to DIAG command.

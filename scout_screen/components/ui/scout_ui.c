@@ -1,0 +1,993 @@
+#include "scout_ui.h"
+#include "display.h"
+#include "rc_protocol.h"
+#include "lvgl.h"
+#include <math.h>
+#include <stdbool.h>
+
+// Owns the full UI layout — widget creation, event callbacks, and the intro
+// overlay. Compiled by both the scout_screen firmware and the PC simulator
+// (sim/), so it must stay free of ESP-IDF and FreeRTOS headers. The simulator
+// provides its own display.h with SCREEN_W/SCREEN_H.
+
+// Max knob offset from centre — base half (65) minus halo half (31), so
+// neither the knob nor its halo ever leaves the 130px joystick frame.
+#define JOY_RADIUS 34
+
+// Intro overlay loading bar — slim rounded track with a gradient fill.
+// The fill sits inside the track's 1px border + 2px padding (3px inset/side).
+#define INTRO_BAR_W   440
+#define INTRO_BAR_H   14
+#define INTRO_FILL_W  (INTRO_BAR_W - 6)
+#define INTRO_FILL_H  (INTRO_BAR_H - 6)
+#define INTRO_HOLD_MS 1200   // how long the finished bar stays before the overlay closes
+
+// Layout — a left sidebar flanks the centred camera area. BAR_H is the same
+// for top and bottom so the camera sits vertically symmetric.
+#define BAR_H       36
+#define PANEL_GAP   8                   // air between the cards/bars and the screen edges
+#define CONTENT_Y   (BAR_H + PANEL_GAP) // content starts below the floating topbar
+#define CONTENT_H   (SCREEN_H - 2 * CONTENT_Y)
+#define SIDE_W      240
+#define PAD         14
+#define ROW_W       (SIDE_W - 2 * PAD)
+#define HDR_Y       12                  // section header at the top of each panel
+#define TELE_CARD_Y 78                  // centres the card in the space below the header
+#define TELE_PITCH  30                  // row spacing in the telemetry
+
+// Command badges (FWD/BWD/STP/LFT/RGT)
+#define BADGE_W     38
+#define BADGE_H     20
+#define BADGE_GAP   7
+#define BADGE_STEP  (BADGE_W + BADGE_GAP)
+
+// Themes dropdown — card under the topbar's right side
+#define MENU_W      150
+#define MENU_ITEM_H 34
+#define MENU_PAD    6
+
+// Telemetry card — rows sit inside a raised card with hairline separators
+#define CARD_PAD    12
+#define TELE_ROW_W  (ROW_W - 2 * CARD_PAD - 2)
+#define TELE_CARD_H (2 * TELE_PITCH + 22 + 2 * (CARD_PAD + 1))
+
+// Floating corner panels — telemetry top right, joystick bottom left,
+// both the same size for visual symmetry
+#define PANEL_H 236
+
+// Crosshatch texture tiled across the card backgrounds — diagonals in both
+// directions form a diamond pattern. The lines are COL_LINE at low opacity
+// so the same tile works on any card colour.
+#define STRIPE_TILE 8                   // tile side and line period; wraps seamlessly
+#define STRIPE_W    1                   // line thickness along x
+#define STRIPE_OPA  60                  // line alpha (0-255)
+
+// Camera viewfinder — accent corner brackets just outside the video area
+#define CAM_X       ((SCREEN_W - CAM_W) / 2)
+#define CAM_Y       ((SCREEN_H - CAM_H) / 2)
+#define CAM_GAP     8
+#define CAM_CORNER  22
+
+// Palette — dark tech / premium. One entry per selectable theme in the
+// THEMES dropdown; the COL_* macros below read from the active theme so the
+// widget builders stay palette-agnostic. Switching theme rebuilds the UI.
+typedef struct {
+    const char *name;
+    uint32_t bg, bar, panel, line, accent, accent_deep;
+    uint32_t text_hi, text_mid, text_lo, good, bad;
+    uint32_t badge_bg, badge_on;
+} ui_theme_t;
+
+static const ui_theme_t s_themes[] = {
+    { .name = "SONAR",
+      .bg = 0x0A0E14, .bar = 0x0D1117, .panel = 0x141A23, .line = 0x232B36,
+      .accent = 0x22D3EE, .accent_deep = 0x0891B2,
+      .text_hi = 0xE6EDF3, .text_mid = 0x9BA7B4, .text_lo = 0x5C6773,
+      .good = 0x34D399, .bad = 0xF87171,
+      .badge_bg = 0x1B2230, .badge_on = 0x10222A },
+    { .name = "DESERT",
+      .bg = 0x120C05, .bar = 0x170F07, .panel = 0x211609, .line = 0x3B2C16,
+      .accent = 0xFFB454, .accent_deep = 0xB45309,
+      .text_hi = 0xF3EAD9, .text_mid = 0xB7A88C, .text_lo = 0x77654A,
+      .good = 0x34D399, .bad = 0xF87171,
+      .badge_bg = 0x2B1F0E, .badge_on = 0x2A1C08 },
+    { .name = "NIGHT OPS",
+      .bg = 0x06100A, .bar = 0x09140D, .panel = 0x0E1F14, .line = 0x1F3A29,
+      .accent = 0x4ADE80, .accent_deep = 0x15803D,
+      .text_hi = 0xE3F2E8, .text_mid = 0x96B7A1, .text_lo = 0x567A64,
+      .good = 0x34D399, .bad = 0xF87171,
+      .badge_bg = 0x12291B, .badge_on = 0x0E2415 },
+};
+#define THEME_COUNT (sizeof(s_themes) / sizeof(s_themes[0]))
+
+static const ui_theme_t *s_th = &s_themes[0];
+
+#define COL_BG          (s_th->bg)
+#define COL_BAR         (s_th->bar)
+#define COL_PANEL       (s_th->panel)
+#define COL_LINE        (s_th->line)
+#define COL_ACCENT      (s_th->accent)
+#define COL_ACCENT_DEEP (s_th->accent_deep)   // gradient start for the loading fill
+#define COL_TEXT_HI     (s_th->text_hi)
+#define COL_TEXT_MID    (s_th->text_mid)
+#define COL_TEXT_LO     (s_th->text_lo)
+#define COL_GOOD        (s_th->good)
+#define COL_BAD         (s_th->bad)
+#define COL_BADGE_BG    (s_th->badge_bg)
+#define COL_BADGE_ON    (s_th->badge_on)
+
+#define XSTR(x) STR(x)
+#define STR(x)  #x
+
+// UI font — Press Start 2P (generated C fonts, see the respective .c files).
+// The 96px logo font only contains space + A-Z to keep its size down.
+LV_FONT_DECLARE(press_start_2p_8);
+LV_FONT_DECLARE(press_start_2p_24);
+LV_FONT_DECLARE(press_start_2p_96);
+#define UI_FONT    (&press_start_2p_8)
+#define SCENE_FONT (&press_start_2p_24)  // scene overlay text over the camera region
+#define LOGO_FONT  (&press_start_2p_96)  // intro logo
+
+static volatile uint8_t s_cmd = CMD_STOP; 
+
+// Widget handles
+
+static lv_obj_t *s_root;          // holds the whole UI; deleted and rebuilt on theme switch
+static lv_obj_t *s_theme_menu;
+static uint8_t   s_pending_theme;
+static uint8_t   s_wifi_level;
+static lv_obj_t *s_intro_overlay;
+static lv_obj_t *s_intro_bar_fill;
+static lv_obj_t *s_intro_status;
+static lv_obj_t *s_intro_pct;
+static uint8_t   s_intro_total;
+static uint8_t   s_intro_step;
+static lv_obj_t *s_knob;
+static lv_obj_t *s_halo;
+static lv_obj_t *s_wifi_dot;
+static lv_obj_t *s_wifi_arcs[3];
+static lv_obj_t *s_link_dot;
+static lv_obj_t *s_link_lbl;
+static lv_obj_t *s_cmd_badges[5];
+static lv_obj_t *s_val_temp;
+static lv_obj_t *s_val_humi;
+static lv_obj_t *s_val_pres;
+static lv_obj_t *s_scene_overlay;       // covers the camera region; driven by scout_ui_overlay()
+static lv_obj_t *s_scene_label;
+static const char *s_overlay_text;      // re-applied after a theme rebuild
+
+// Widget helpers
+
+static lv_obj_t *make_obj(lv_obj_t *parent)
+{
+    lv_obj_t *o = lv_obj_create(parent);
+    lv_obj_set_style_border_width(o, 0, 0);
+    lv_obj_set_style_pad_all(o, 0, 0);
+    lv_obj_set_style_radius(o, 0, 0);
+    lv_obj_set_style_bg_opa(o, LV_OPA_TRANSP, 0);
+    lv_obj_clear_flag(o, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+    return o;
+}
+
+static lv_obj_t *make_label(lv_obj_t *parent, const char *text,
+                              lv_color_t color, const lv_font_t *font)
+{
+    lv_obj_t *l = lv_label_create(parent);
+    lv_label_set_text(l, text);
+    lv_obj_set_style_text_color(l, color, 0);
+    lv_obj_set_style_text_font(l, font, 0);
+    lv_obj_clear_flag(l, LV_OBJ_FLAG_CLICKABLE);
+    return l;
+}
+
+// Stripe tile pixel data — RGB565 + alpha, filled in by make_stripe_tile().
+static uint8_t      s_stripe_map[STRIPE_TILE * STRIPE_TILE * 3];
+static lv_img_dsc_t s_stripe_tile;
+
+// Builds the crosshatch tile at init: (x + y) wrapping inside STRIPE_W gives
+// the "/" diagonals, (x - y) the "\" ones; everything else stays transparent.
+static void make_stripe_tile(void)
+{
+    lv_color_t line = lv_color_hex(COL_LINE);
+    for(int y = 0; y < STRIPE_TILE; y++) {
+        for(int x = 0; x < STRIPE_TILE; x++) {
+            int i = (y * STRIPE_TILE + x) * 3;
+            bool fwd  = (x + y) % STRIPE_TILE < STRIPE_W;
+            bool back = (x - y + STRIPE_TILE) % STRIPE_TILE < STRIPE_W;
+            s_stripe_map[i]     = line.full & 0xFF;
+            s_stripe_map[i + 1] = line.full >> 8;
+            s_stripe_map[i + 2] = (fwd || back) ? STRIPE_OPA : 0;
+        }
+    }
+    s_stripe_tile.header.cf          = LV_IMG_CF_TRUE_COLOR_ALPHA;
+    s_stripe_tile.header.always_zero = 0;
+    s_stripe_tile.header.w           = STRIPE_TILE;
+    s_stripe_tile.header.h           = STRIPE_TILE;
+    s_stripe_tile.data_size          = sizeof(s_stripe_map);
+    s_stripe_tile.data               = s_stripe_map;
+}
+
+// Lays the stripe texture over a card background.
+static void add_stripes(lv_obj_t *card)
+{
+    lv_obj_set_style_bg_img_src(card, &s_stripe_tile, 0);
+    lv_obj_set_style_bg_img_tiled(card, true, 0);
+}
+
+// Thin vertical hairline used to separate groups in the top and bottom bars.
+static void make_vsep(lv_obj_t *parent, lv_align_t align, int32_t x)
+{
+    lv_obj_t *s = make_obj(parent);
+    lv_obj_set_size(s, 1, 12);
+    lv_obj_align(s, align, x, 0);
+    lv_obj_set_style_bg_color(s, lv_color_hex(COL_LINE), 0);
+    lv_obj_set_style_bg_opa(s, LV_OPA_COVER, 0);
+}
+
+// One arc of the WiFi signal symbol — a 90° fan segment above the dot,
+// all arcs sharing the same centre point (cx, cy).
+static lv_obj_t *make_wifi_arc(lv_obj_t *parent, int32_t d, int32_t cx, int32_t cy)
+{
+    lv_obj_t *a = lv_arc_create(parent);
+    lv_obj_set_size(a, d, d);
+    lv_obj_set_pos(a, cx - d / 2, cy - d / 2);
+    lv_arc_set_bg_angles(a, 225, 315);
+    lv_obj_remove_style(a, NULL, LV_PART_KNOB);
+    lv_obj_set_style_arc_opa(a, LV_OPA_TRANSP, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_width(a, 2, LV_PART_MAIN);
+    lv_obj_set_style_arc_color(a, lv_color_hex(COL_LINE), LV_PART_MAIN);
+    lv_obj_clear_flag(a, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    return a;
+}
+
+// Accent corner bracket framing the camera area like a viewfinder.
+static void make_cam_corner(int32_t x, int32_t y, lv_border_side_t side)
+{
+    lv_obj_t *c = make_obj(s_root);
+    lv_obj_set_size(c, CAM_CORNER, CAM_CORNER);
+    lv_obj_set_pos(c, x, y);
+    lv_obj_set_style_border_width(c, 2, 0);
+    lv_obj_set_style_border_color(c, lv_color_hex(COL_ACCENT), 0);
+    lv_obj_set_style_border_side(c, side, 0);
+    lv_obj_set_style_border_opa(c, LV_OPA_COVER, 0);
+}
+
+// Floating rounded panel — the shared card style for the corner widgets.
+static lv_obj_t *make_panel(int32_t x, int32_t y, int32_t w, int32_t h)
+{
+    lv_obj_t *p = make_obj(s_root);
+    lv_obj_set_size(p, w, h);
+    lv_obj_set_pos(p, x, y);
+    lv_obj_set_style_radius(p, 8, 0);
+    lv_obj_set_style_bg_color(p, lv_color_hex(COL_PANEL), 0);
+    lv_obj_set_style_bg_opa(p, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(p, 1, 0);
+    lv_obj_set_style_border_color(p, lv_color_hex(COL_LINE), 0);
+    add_stripes(p);
+    return p;
+}
+
+// Section header with an accent mark on the left and a gradient rule that
+// fades out across the panel below the text.
+static void make_section_hdr(lv_obj_t *parent, const char *text, int32_t y)
+{
+    // y-3 centres the 14px mark on the 8px text's midline (y+4)
+    lv_obj_t *mark = make_obj(parent);
+    lv_obj_set_size(mark, 3, 14);
+    lv_obj_set_pos(mark, PAD, y - 3);
+    lv_obj_set_style_radius(mark, 1, 0);
+    lv_obj_set_style_bg_color(mark, lv_color_hex(COL_ACCENT), 0);
+    lv_obj_set_style_bg_opa(mark, LV_OPA_COVER, 0);
+
+    lv_obj_t *l = make_label(parent, text,
+        lv_color_hex(COL_TEXT_MID), UI_FONT);
+    lv_obj_set_style_text_letter_space(l, 2, 0);
+    lv_obj_set_pos(l, PAD + 10, y);
+
+    lv_obj_t *rule = make_obj(parent);
+    lv_obj_set_size(rule, ROW_W, 1);
+    lv_obj_set_pos(rule, PAD, y + 18);
+    lv_obj_set_style_bg_color(rule, lv_color_hex(COL_ACCENT), 0);
+    lv_obj_set_style_bg_grad_color(rule, lv_color_hex(COL_PANEL), 0);
+    lv_obj_set_style_bg_grad_dir(rule, LV_GRAD_DIR_HOR, 0);
+    lv_obj_set_style_bg_opa(rule, LV_OPA_60, 0);
+}
+
+static lv_obj_t *create_joy_tick(lv_obj_t *parent, lv_align_t align,
+                                   int32_t xo, int32_t yo, bool horiz)
+{
+    lv_obj_t *t = lv_obj_create(parent);
+    lv_obj_set_size(t, horiz ? 7 : 1, horiz ? 1 : 7);
+    lv_obj_align(t, align, xo, yo);
+    lv_obj_set_style_bg_color(t, lv_color_hex(COL_TEXT_LO), 0);
+    lv_obj_set_style_bg_opa(t, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(t, 1, 0);
+    lv_obj_set_style_border_width(t, 0, 0);
+    lv_obj_clear_flag(t, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    return t;
+}
+
+static lv_obj_t *make_tele_row(lv_obj_t *parent, const char *key,
+                                 const char *init_val, lv_color_t val_color,
+                                 int32_t y)
+{
+    lv_obj_t *row = make_obj(parent);
+    lv_obj_set_size(row, TELE_ROW_W, 22);
+    lv_obj_set_pos(row, 0, y);
+
+    lv_obj_t *k = make_label(row, key,
+        lv_color_hex(COL_TEXT_MID), UI_FONT);
+    lv_obj_align(k, LV_ALIGN_LEFT_MID, 0, 0);
+
+    // Value sits in a raised chip so the readouts read as instruments
+    lv_obj_t *chip = lv_obj_create(row);
+    lv_obj_set_size(chip, 84, 20);
+    lv_obj_align(chip, LV_ALIGN_RIGHT_MID, 0, 0);
+    lv_obj_set_style_radius(chip, 10, 0);
+    lv_obj_set_style_bg_color(chip, lv_color_hex(COL_BADGE_BG), 0);
+    lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(chip, 1, 0);
+    lv_obj_set_style_border_color(chip, lv_color_hex(COL_LINE), 0);
+    lv_obj_set_style_pad_all(chip, 0, 0);
+    lv_obj_clear_flag(chip, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t *v = make_label(chip, init_val, val_color, UI_FONT);
+    lv_obj_align(v, LV_ALIGN_RIGHT_MID, -8, 0);
+    return v;
+}
+
+// Command badges
+
+static void update_cmd_badges(uint8_t cmd)
+{
+    static const uint8_t masks[5] = {
+        CMD_FORWARD, CMD_BACKWARD, 0xFF, CMD_LEFT, CMD_RIGHT
+    };
+    for(int i = 0; i < 5; i++) {
+        bool active = (i == 2) ? (cmd == CMD_STOP) : (cmd & masks[i]);
+        lv_obj_set_style_bg_color(s_cmd_badges[i],
+            lv_color_hex(active ? COL_BADGE_ON : COL_BADGE_BG), 0);
+        lv_obj_set_style_border_color(s_cmd_badges[i],
+            lv_color_hex(active ? COL_ACCENT : COL_LINE), 0);
+
+        lv_obj_t *lbl = lv_obj_get_child(s_cmd_badges[i], 0);
+        if(lbl) {
+            lv_obj_set_style_text_color(lbl,
+                lv_color_hex(active ? COL_ACCENT : COL_TEXT_LO), 0);
+        }
+    }
+}
+
+// Joystick event
+
+static void joy_event(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t       *base = lv_event_get_target(e);
+
+    if(code == LV_EVENT_PRESSING) {
+        lv_indev_t *indev = lv_indev_get_act();
+        lv_point_t  pt;
+        lv_indev_get_point(indev, &pt);
+
+        lv_area_t coords;
+        lv_obj_get_coords(base, &coords);
+        int dx = pt.x - (coords.x1 + coords.x2) / 2;
+        int dy = pt.y - (coords.y1 + coords.y2) / 2;
+
+        float mag = sqrtf((float)(dx * dx + dy * dy));
+        if(mag > JOY_RADIUS) {
+            dx = (int)(dx * JOY_RADIUS / mag);
+            dy = (int)(dy * JOY_RADIUS / mag);
+        }
+
+        lv_obj_align(s_knob, LV_ALIGN_CENTER, dx, dy);
+        lv_obj_align(s_halo, LV_ALIGN_CENTER, dx, dy);
+        lv_obj_set_style_transform_zoom(s_knob, 210, 0);
+        lv_obj_set_style_bg_color(s_knob, lv_color_hex(COL_ACCENT), 0);
+
+        uint8_t cmd = CMD_STOP;
+        if(dy < -15) cmd |= CMD_FORWARD;
+        if(dy >  15) cmd |= CMD_BACKWARD;
+        if(dx < -15) cmd |= CMD_LEFT;
+        if(dx >  15) cmd |= CMD_RIGHT;
+        s_cmd = cmd;
+        update_cmd_badges(s_cmd);
+    } else {
+        lv_obj_align(s_knob, LV_ALIGN_CENTER, 0, 0);
+        lv_obj_align(s_halo, LV_ALIGN_CENTER, 0, 0);
+        lv_obj_set_style_transform_zoom(s_knob, 256, 0);
+        lv_obj_set_style_bg_color(s_knob, lv_color_hex(0x3A434F), 0);
+        s_cmd = CMD_STOP;
+        update_cmd_badges(CMD_STOP);
+    }
+}
+
+// Intro close timer — one-shot, fires after the last init step so the full
+// bar stays visible a moment. Runs inside the render loop's lv_timer_handler.
+
+static void intro_close_cb(lv_timer_t *t)
+{
+    (void)t;
+    lv_obj_del(s_intro_overlay);
+    s_intro_overlay = NULL;
+}
+
+// Themes dropdown events — selecting a theme rebuilds the whole UI with the
+// new palette. The rebuild runs from a one-shot timer, never from the item's
+// own callback, since the rebuild deletes the object firing the event.
+
+static void theme_apply_cb(lv_timer_t *t)
+{
+    (void)t;
+    scout_ui_set_theme(s_pending_theme);
+}
+
+static void theme_item_event(lv_event_t *e)
+{
+    s_pending_theme = (uint8_t)(uintptr_t)lv_event_get_user_data(e);
+    lv_obj_add_flag(s_theme_menu, LV_OBJ_FLAG_HIDDEN);
+    lv_timer_t *t = lv_timer_create(theme_apply_cb, 0, NULL);
+    lv_timer_set_repeat_count(t, 1);
+}
+
+static void themes_event(lv_event_t *e)
+{
+    (void)e;
+    if(lv_obj_has_flag(s_theme_menu, LV_OBJ_FLAG_HIDDEN)) {
+        lv_obj_clear_flag(s_theme_menu, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(s_theme_menu);
+    } else {
+        lv_obj_add_flag(s_theme_menu, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+// UI assembly — one builder per visible module, called from scout_ui_init
+
+// Topbar — floating card with the brand and the WiFi signal symbol.
+static void make_topbar(void)
+{
+    lv_obj_t *topbar = make_obj(s_root);
+    lv_obj_set_size(topbar, SCREEN_W - 2 * PANEL_GAP, BAR_H);
+    lv_obj_align(topbar, LV_ALIGN_TOP_MID, 0, PANEL_GAP);
+    lv_obj_set_style_radius(topbar, 8, 0);
+    lv_obj_set_style_bg_color(topbar, lv_color_hex(COL_BAR), 0);
+    lv_obj_set_style_bg_opa(topbar, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(topbar, 1, 0);
+    lv_obj_set_style_border_color(topbar, lv_color_hex(COL_LINE), 0);
+
+    lv_obj_t *logo = make_label(topbar, "SCOUT",
+        lv_color_hex(COL_ACCENT), UI_FONT);
+    lv_obj_set_style_text_letter_space(logo, 6, 0);
+    lv_obj_align(logo, LV_ALIGN_LEFT_MID, 14, 0);
+
+    make_vsep(topbar, LV_ALIGN_LEFT_MID, 100);
+
+    lv_obj_t *tagline = make_label(topbar, "LINTECH",
+        lv_color_hex(COL_TEXT_LO), UI_FONT);
+    lv_obj_set_style_text_letter_space(tagline, 2, 0);
+    lv_obj_align(tagline, LV_ALIGN_LEFT_MID, 116, 0);
+
+    // Link status in the centre — dot + label driven by scout_ui_update()
+    s_link_dot = make_obj(topbar);
+    lv_obj_set_size(s_link_dot, 6, 6);
+    lv_obj_align(s_link_dot, LV_ALIGN_CENTER, -36, 0);
+    lv_obj_set_style_radius(s_link_dot, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(s_link_dot, lv_color_hex(COL_BAD), 0);
+    lv_obj_set_style_bg_opa(s_link_dot, LV_OPA_COVER, 0);
+
+    s_link_lbl = make_label(topbar, "NO LINK",
+        lv_color_hex(COL_TEXT_LO), UI_FONT);
+    lv_obj_set_style_text_letter_space(s_link_lbl, 2, 0);
+    lv_obj_set_width(s_link_lbl, 80);
+    lv_obj_set_style_text_align(s_link_lbl, LV_TEXT_ALIGN_LEFT, 0);
+    lv_obj_align(s_link_lbl, LV_ALIGN_CENTER, 18, 0);
+
+    // THEMES opens the theme dropdown — sits left of the separator
+    lv_obj_t *themes = make_label(topbar, "THEMES",
+        lv_color_hex(COL_TEXT_MID), UI_FONT);
+    lv_obj_set_style_text_letter_space(themes, 2, 0);
+    lv_obj_align(themes, LV_ALIGN_RIGHT_MID, -66, 0);
+    lv_obj_add_flag(themes, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(themes, 10);   // the 8px label alone is a small tap target
+    lv_obj_add_event_cb(themes, themes_event, LV_EVENT_CLICKED, NULL);
+
+    make_vsep(topbar, LV_ALIGN_RIGHT_MID, -52);
+
+    // WiFi signal symbol — dot + three arcs, lit according to the level
+    // Container height matches the visible glyph (arc tops to dot bottom).
+    // The -2 offset centres the symbol optically against the separator.
+    lv_obj_t *wifi_icon = make_obj(topbar);
+    lv_obj_set_size(wifi_icon, 28, 15);
+    lv_obj_align(wifi_icon, LV_ALIGN_RIGHT_MID, -14, -2);
+
+    s_wifi_dot = make_obj(wifi_icon);
+    lv_obj_set_size(s_wifi_dot, 4, 4);
+    lv_obj_set_pos(s_wifi_dot, 12, 11);
+    lv_obj_set_style_radius(s_wifi_dot, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(s_wifi_dot, lv_color_hex(COL_BAD), 0);
+    lv_obj_set_style_bg_opa(s_wifi_dot, LV_OPA_COVER, 0);
+
+    for(int i = 0; i < 3; i++) {
+        s_wifi_arcs[i] = make_wifi_arc(wifi_icon, 10 + 8 * i, 14, 13);
+    }
+}
+
+// Bottombar — floating card with the network facts and the RTOS tag.
+static void make_botbar(void)
+{
+    lv_obj_t *botbar = make_obj(s_root);
+    lv_obj_set_size(botbar, SCREEN_W - 2 * PANEL_GAP, BAR_H);
+    lv_obj_align(botbar, LV_ALIGN_BOTTOM_MID, 0, -PANEL_GAP);
+    lv_obj_set_style_radius(botbar, 8, 0);
+    lv_obj_set_style_bg_color(botbar, lv_color_hex(COL_BAR), 0);
+    lv_obj_set_style_bg_opa(botbar, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(botbar, 1, 0);
+    lv_obj_set_style_border_color(botbar, lv_color_hex(COL_LINE), 0);
+
+    const char *bot_keys[] = { "IP", "UDP" };
+    const char *bot_vals[] = { S3_IP, XSTR(VID_PORT) };
+    const int32_t key_w[]  = { 24, 38 };
+    int32_t bot_x = 14;
+    for(int i = 0; i < 2; i++) {
+        lv_obj_t *k = make_label(botbar, bot_keys[i],
+            lv_color_hex(COL_TEXT_LO), UI_FONT);
+        lv_obj_align(k, LV_ALIGN_LEFT_MID, bot_x, 0);
+        bot_x += key_w[i];
+        lv_obj_t *v = make_label(botbar, bot_vals[i],
+            lv_color_hex(COL_TEXT_MID), UI_FONT);
+        lv_obj_align(v, LV_ALIGN_LEFT_MID, bot_x, 0);
+        bot_x += (i == 0) ? 110 : 50;
+    }
+    make_vsep(botbar, LV_ALIGN_LEFT_MID, 140);
+    make_vsep(botbar, LV_ALIGN_LEFT_MID, 246);
+
+    // Active theme — accent swatch + name, rebuilt with the UI on switch
+    lv_obj_t *swatch = make_obj(botbar);
+    lv_obj_set_size(swatch, 8, 8);
+    lv_obj_align(swatch, LV_ALIGN_LEFT_MID, 264, 0);
+    lv_obj_set_style_radius(swatch, 2, 0);
+    lv_obj_set_style_bg_color(swatch, lv_color_hex(COL_ACCENT), 0);
+    lv_obj_set_style_bg_opa(swatch, LV_OPA_COVER, 0);
+
+    lv_obj_t *theme_name = make_label(botbar, s_th->name,
+        lv_color_hex(COL_TEXT_MID), UI_FONT);
+    lv_obj_set_style_text_letter_space(theme_name, 2, 0);
+    lv_obj_align(theme_name, LV_ALIGN_LEFT_MID, 280, 0);
+
+    make_vsep(botbar, LV_ALIGN_RIGHT_MID, -165);
+
+    lv_obj_t *rtos_k = make_label(botbar, "RTOS",
+        lv_color_hex(COL_TEXT_LO), UI_FONT);
+    lv_obj_align(rtos_k, LV_ALIGN_RIGHT_MID, -120, 0);
+    lv_obj_t *rtos_v = make_label(botbar, "FREERTOS",
+        lv_color_hex(COL_ACCENT), UI_FONT);
+    lv_obj_align(rtos_v, LV_ALIGN_RIGHT_MID, -14, 0);
+}
+
+// Telemetry panel — floating card in the top right corner, aligned with the
+// camera top edge. Holds the value rows in a raised inner card.
+static void make_tele_panel(void)
+{
+    lv_obj_t *tele_panel = make_panel(SCREEN_W - PANEL_GAP - SIDE_W,
+                                      CAM_Y,
+                                      SIDE_W, PANEL_H);
+
+    make_section_hdr(tele_panel, "TELEMETRI", HDR_Y);
+
+    // Raised card around the telemetry rows
+    lv_obj_t *tele_card = lv_obj_create(tele_panel);
+    lv_obj_set_size(tele_card, ROW_W, TELE_CARD_H);
+    lv_obj_set_pos(tele_card, PAD, TELE_CARD_Y);
+    lv_obj_set_style_radius(tele_card, 8, 0);
+    lv_obj_set_style_bg_color(tele_card, lv_color_hex(COL_BAR), 0);
+    lv_obj_set_style_bg_opa(tele_card, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(tele_card, 1, 0);
+    lv_obj_set_style_border_color(tele_card, lv_color_hex(COL_LINE), 0);
+    lv_obj_set_style_pad_all(tele_card, 0, 0);
+    lv_obj_clear_flag(tele_card, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t *tele_cont = make_obj(tele_card);
+    lv_obj_set_size(tele_cont, TELE_ROW_W, 2 * TELE_PITCH + 22);
+    lv_obj_set_pos(tele_cont, CARD_PAD, CARD_PAD);
+
+    s_val_temp = make_tele_row(tele_cont, "temperature", "--.- C",   lv_color_hex(COL_ACCENT), 0 * TELE_PITCH);
+    s_val_humi = make_tele_row(tele_cont, "humidity",    "-- %",     lv_color_hex(COL_ACCENT), 1 * TELE_PITCH);
+    s_val_pres = make_tele_row(tele_cont, "pressure",    "---- hPa", lv_color_hex(COL_ACCENT), 2 * TELE_PITCH);
+
+    for(int i = 1; i < 3; i++) {
+        lv_obj_t *sep = make_obj(tele_cont);
+        lv_obj_set_size(sep, TELE_ROW_W, 1);
+        lv_obj_set_pos(sep, 0, i * TELE_PITCH - 4);
+        lv_obj_set_style_bg_color(sep, lv_color_hex(COL_LINE), 0);
+        lv_obj_set_style_bg_opa(sep, LV_OPA_COVER, 0);
+    }
+}
+
+// Command badge row (FWD/BWD/STP/LFT/RGT) at the top of the joystick panel.
+static void make_cmd_badges(lv_obj_t *joy_panel)
+{
+    const char *badge_labels[5] = { "FWD", "BWD", "STP", "LFT", "RGT" };
+    int32_t badge_x = (SIDE_W - (5 * BADGE_W + 4 * BADGE_GAP)) / 2;   // centre the row
+    for(int i = 0; i < 5; i++) {
+        lv_obj_t *badge = lv_obj_create(joy_panel);
+        lv_obj_set_size(badge, BADGE_W, BADGE_H);
+        lv_obj_set_pos(badge, badge_x, 44);
+        lv_obj_set_style_radius(badge, BADGE_H / 2, 0);
+        lv_obj_set_style_bg_color(badge, lv_color_hex(COL_BADGE_BG), 0);
+        lv_obj_set_style_bg_opa(badge, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(badge, 1, 0);
+        lv_obj_set_style_border_color(badge, lv_color_hex(COL_LINE), 0);
+        lv_obj_set_style_pad_all(badge, 0, 0);
+        lv_obj_clear_flag(badge, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_t *bl = make_label(badge, badge_labels[i],
+            lv_color_hex(COL_TEXT_LO), UI_FONT);
+        lv_obj_align(bl, LV_ALIGN_CENTER, 0, 0);
+        s_cmd_badges[i] = badge;
+        badge_x += BADGE_STEP;
+    }
+    update_cmd_badges(CMD_STOP);
+}
+
+// The joystick itself — concentric rings, touch base, halo and knob.
+static void make_joystick(lv_obj_t *joy_panel)
+{
+    // Outer concentric ring gives the joystick an instrument-dial look
+    lv_obj_t *joy_ring = make_obj(joy_panel);
+    lv_obj_set_size(joy_ring, 146, 146);
+    lv_obj_set_pos(joy_ring, (SIDE_W - 146) / 2, 78);
+    lv_obj_set_style_radius(joy_ring, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_border_width(joy_ring, 1, 0);
+    lv_obj_set_style_border_color(joy_ring, lv_color_hex(COL_LINE), 0);
+    lv_obj_set_style_border_opa(joy_ring, LV_OPA_COVER, 0);
+
+    // Accent dots at the ring's diagonals complete the dial. 51 ≈ 72/√2,
+    // the diagonal offset from the ring centre (73, 73).
+    for(int dy = -1; dy <= 1; dy += 2) {
+        for(int dx = -1; dx <= 1; dx += 2) {
+            lv_obj_t *d = make_obj(joy_ring);
+            lv_obj_set_size(d, 3, 3);
+            lv_obj_set_pos(d, 73 + dx * 51 - 1, 73 + dy * 51 - 1);
+            lv_obj_set_style_radius(d, LV_RADIUS_CIRCLE, 0);
+            lv_obj_set_style_bg_color(d, lv_color_hex(COL_ACCENT), 0);
+            lv_obj_set_style_bg_opa(d, LV_OPA_50, 0);
+        }
+    }
+
+    lv_obj_t *base = lv_obj_create(joy_panel);
+    lv_obj_set_size(base, 130, 130);
+    lv_obj_set_pos(base, (SIDE_W - 130) / 2, 86);
+    lv_obj_set_style_radius(base, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(base, lv_color_hex(COL_BG), 0);
+    lv_obj_set_style_bg_opa(base, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(base, 2, 0);
+    lv_obj_set_style_border_color(base, lv_color_hex(COL_LINE), 0);
+    lv_obj_set_style_border_opa(base, LV_OPA_COVER, 0);
+    // Shadow removed — blurred shadow rendering into PSRAM framebuffers
+    // stalled the LVGL render pass and tripped the task watchdog.
+    lv_obj_clear_flag(base, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(base, joy_event, LV_EVENT_PRESSING,   NULL);
+    lv_obj_add_event_cb(base, joy_event, LV_EVENT_RELEASED,   NULL);
+    lv_obj_add_event_cb(base, joy_event, LV_EVENT_PRESS_LOST, NULL);
+
+    lv_obj_t *guide = lv_obj_create(base);
+    lv_obj_set_size(guide, 82, 82);
+    lv_obj_align(guide, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_radius(guide, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_opa(guide, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(guide, 1, 0);
+    lv_obj_set_style_border_color(guide, lv_color_hex(COL_LINE), 0);
+    lv_obj_set_style_border_opa(guide, LV_OPA_COVER, 0);
+    lv_obj_clear_flag(guide, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+
+    create_joy_tick(base, LV_ALIGN_TOP_MID,    0,  7, false);
+    create_joy_tick(base, LV_ALIGN_BOTTOM_MID, 0, -7, false);
+    create_joy_tick(base, LV_ALIGN_LEFT_MID,   7,  0, true);
+    create_joy_tick(base, LV_ALIGN_RIGHT_MID, -7,  0, true);
+
+    s_halo = lv_obj_create(base);
+    lv_obj_set_size(s_halo, 62, 62);
+    lv_obj_align(s_halo, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_radius(s_halo, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(s_halo, lv_color_hex(COL_ACCENT), 0);
+    lv_obj_set_style_bg_opa(s_halo, LV_OPA_20, 0);
+    lv_obj_set_style_border_width(s_halo, 0, 0);
+    lv_obj_clear_flag(s_halo, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+
+    s_knob = lv_obj_create(base);
+    lv_obj_set_size(s_knob, 46, 46);
+    lv_obj_align(s_knob, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_radius(s_knob, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(s_knob, lv_color_hex(0x3A434F), 0);
+    lv_obj_set_style_bg_opa(s_knob, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(s_knob, 0, 0);
+    // Shadow removed — same watchdog/stall reason as the base above.
+    lv_obj_set_style_transform_pivot_x(s_knob, 23, 0);
+    lv_obj_set_style_transform_pivot_y(s_knob, 23, 0);
+    lv_obj_set_style_transform_zoom(s_knob, 256, 0);
+    lv_obj_clear_flag(s_knob, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *ch_ring = lv_obj_create(s_knob);
+    lv_obj_set_size(ch_ring, 16, 16);
+    lv_obj_align(ch_ring, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_radius(ch_ring, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_opa(ch_ring, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(ch_ring, 1, 0);
+    lv_obj_set_style_border_color(ch_ring, lv_color_hex(COL_TEXT_HI), 0);
+    lv_obj_set_style_border_opa(ch_ring, LV_OPA_40, 0);
+    lv_obj_clear_flag(ch_ring, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *ch_dot = lv_obj_create(s_knob);
+    lv_obj_set_size(ch_dot, 4, 4);
+    lv_obj_align(ch_dot, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_radius(ch_dot, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(ch_dot, lv_color_hex(COL_TEXT_HI), 0);
+    lv_obj_set_style_bg_opa(ch_dot, LV_OPA_60, 0);
+    lv_obj_set_style_border_width(ch_dot, 0, 0);
+    lv_obj_clear_flag(ch_dot, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+}
+
+// Joystick panel — floating card in the bottom left corner, aligned with the
+// camera bottom edge. Badge row on top, the stick below.
+static void make_joy_panel(void)
+{
+    lv_obj_t *joy_panel = make_panel(PANEL_GAP,
+                                     CAM_Y + CAM_H - PANEL_H,
+                                     SIDE_W, PANEL_H);
+
+    make_section_hdr(joy_panel, "JOYSTICK", HDR_Y);
+    make_cmd_badges(joy_panel);
+    make_joystick(joy_panel);
+}
+
+// Themes dropdown — floating card under the topbar's right side, hidden
+// until THEMES is tapped. Each item is labelled in its theme's accent colour;
+// a dot marks the active theme.
+static void make_theme_menu(void)
+{
+    s_theme_menu = make_obj(s_root);
+    lv_obj_set_size(s_theme_menu, MENU_W, THEME_COUNT * MENU_ITEM_H + 2 * MENU_PAD);
+    lv_obj_set_pos(s_theme_menu, SCREEN_W - PANEL_GAP - MENU_W - 6, PANEL_GAP + BAR_H + 4);
+    lv_obj_set_style_radius(s_theme_menu, 8, 0);
+    lv_obj_set_style_bg_color(s_theme_menu, lv_color_hex(COL_BAR), 0);
+    lv_obj_set_style_bg_opa(s_theme_menu, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(s_theme_menu, 1, 0);
+    lv_obj_set_style_border_color(s_theme_menu, lv_color_hex(COL_LINE), 0);
+    lv_obj_add_flag(s_theme_menu, LV_OBJ_FLAG_HIDDEN);
+
+    for(uint8_t i = 0; i < THEME_COUNT; i++) {
+        lv_obj_t *item = lv_obj_create(s_theme_menu);
+        lv_obj_set_size(item, MENU_W - 2 * MENU_PAD, MENU_ITEM_H);
+        lv_obj_set_pos(item, MENU_PAD, MENU_PAD + i * MENU_ITEM_H);
+        lv_obj_set_style_radius(item, 6, 0);
+        lv_obj_set_style_border_width(item, 0, 0);
+        lv_obj_set_style_pad_all(item, 0, 0);
+        lv_obj_set_style_bg_opa(item, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_bg_color(item, lv_color_hex(COL_BADGE_ON), LV_STATE_PRESSED);
+        lv_obj_set_style_bg_opa(item, LV_OPA_COVER, LV_STATE_PRESSED);
+        lv_obj_clear_flag(item, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_event_cb(item, theme_item_event, LV_EVENT_CLICKED,
+                            (void *)(uintptr_t)i);
+
+        lv_obj_t *l = make_label(item, s_themes[i].name,
+            lv_color_hex(s_themes[i].accent), UI_FONT);
+        lv_obj_set_style_text_letter_space(l, 2, 0);
+        lv_obj_align(l, LV_ALIGN_LEFT_MID, 10, 0);
+
+        if(&s_themes[i] == s_th) {
+            lv_obj_t *dot = make_obj(item);
+            lv_obj_set_size(dot, 4, 4);
+            lv_obj_align(dot, LV_ALIGN_RIGHT_MID, -10, 0);
+            lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+            lv_obj_set_style_bg_color(dot, lv_color_hex(s_themes[i].accent), 0);
+            lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+        }
+    }
+}
+
+// Small accent tick centred on one edge of the viewfinder, sitting in the
+// gap band outside the video region so the blit never paints over it.
+static void make_cam_tick(int32_t x, int32_t y, bool horiz)
+{
+    lv_obj_t *t = make_obj(s_root);
+    lv_obj_set_size(t, horiz ? 14 : 2, horiz ? 2 : 14);
+    lv_obj_set_pos(t, x, y);
+    lv_obj_set_style_radius(t, 1, 0);
+    lv_obj_set_style_bg_color(t, lv_color_hex(COL_ACCENT), 0);
+    lv_obj_set_style_bg_opa(t, LV_OPA_70, 0);
+}
+
+// Viewfinder corners — the video is blitted between them by render.c.
+static void make_cam_corners(void)
+{
+    make_cam_corner(CAM_X - CAM_GAP, CAM_Y - CAM_GAP,
+                    LV_BORDER_SIDE_TOP | LV_BORDER_SIDE_LEFT);
+    make_cam_corner(CAM_X + CAM_W + CAM_GAP - CAM_CORNER, CAM_Y - CAM_GAP,
+                    LV_BORDER_SIDE_TOP | LV_BORDER_SIDE_RIGHT);
+    make_cam_corner(CAM_X - CAM_GAP, CAM_Y + CAM_H + CAM_GAP - CAM_CORNER,
+                    LV_BORDER_SIDE_BOTTOM | LV_BORDER_SIDE_LEFT);
+    make_cam_corner(CAM_X + CAM_W + CAM_GAP - CAM_CORNER,
+                    CAM_Y + CAM_H + CAM_GAP - CAM_CORNER,
+                    LV_BORDER_SIDE_BOTTOM | LV_BORDER_SIDE_RIGHT);
+
+    make_cam_tick(CAM_X + CAM_W / 2 - 7, CAM_Y - CAM_GAP + 1,        true);
+    make_cam_tick(CAM_X + CAM_W / 2 - 7, CAM_Y + CAM_H + CAM_GAP - 3, true);
+    make_cam_tick(CAM_X - CAM_GAP + 1,        CAM_Y + CAM_H / 2 - 7, false);
+    make_cam_tick(CAM_X + CAM_W + CAM_GAP - 3, CAM_Y + CAM_H / 2 - 7, false);
+}
+
+// Builds the full UI under a fresh s_root. Called at init and again after
+// each theme switch, so everything here must derive its colours from s_th.
+// Opaque cover over the camera region with a centred message. Hidden by default;
+// scene_render shows/hides it via scout_ui_overlay() (e.g. "WAITING FOR CAM").
+static void make_scene_overlay(void)
+{
+    s_scene_overlay = make_obj(s_root);
+    lv_obj_set_size(s_scene_overlay, CAM_W, CAM_H);
+    lv_obj_set_pos(s_scene_overlay, CAM_X, CAM_Y);
+    lv_obj_set_style_bg_color(s_scene_overlay, lv_color_hex(COL_BG), 0);
+    lv_obj_set_style_bg_opa(s_scene_overlay, LV_OPA_COVER, 0);
+
+    s_scene_label = make_label(s_scene_overlay, "", lv_color_hex(COL_TEXT_HI), SCENE_FONT);
+    lv_obj_set_width(s_scene_label, CAM_W - 2 * PAD);
+    lv_obj_set_style_text_align(s_scene_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_letter_space(s_scene_label, 2, 0);
+    lv_obj_set_style_text_line_space(s_scene_label, 8, 0);
+    lv_obj_align(s_scene_label, LV_ALIGN_CENTER, 0, 0);
+
+    scout_ui_overlay(s_overlay_text);   // re-apply state across theme rebuilds
+}
+
+static void build_ui(void)
+{
+    make_stripe_tile();
+
+    lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(COL_BG), 0);
+    lv_obj_set_style_bg_opa(lv_scr_act(), LV_OPA_COVER, 0);
+
+    s_root = make_obj(lv_scr_act());
+    lv_obj_set_size(s_root, SCREEN_W, SCREEN_H);
+    lv_obj_set_pos(s_root, 0, 0);
+
+    make_topbar();
+    make_botbar();
+    make_tele_panel();
+    make_joy_panel();
+    make_cam_corners();
+    make_scene_overlay();
+    make_theme_menu();   // last so the dropdown opens on top of everything
+}
+
+void scout_ui_init(void)
+{
+    build_ui();
+}
+
+void scout_ui_set_theme(uint8_t idx)
+{
+    s_th = &s_themes[idx % THEME_COUNT];
+    lv_obj_del(s_root);
+    build_ui();
+    scout_ui_update(s_wifi_level);
+}
+
+// Future: scout_ui_update(float temp, float humi, float pres, uint8_t wifi_level)
+// when cam sends sensor data
+void scout_ui_update(uint8_t wifi_level)
+{
+    s_wifi_level = wifi_level;   // re-applied after a theme rebuild
+    lv_obj_set_style_bg_color(s_wifi_dot,
+        lv_color_hex(wifi_level ? COL_TEXT_HI : COL_BAD), 0);
+    for(int i = 0; i < 3; i++) {
+        lv_obj_set_style_arc_color(s_wifi_arcs[i],
+            lv_color_hex(wifi_level > (uint8_t)i ? COL_TEXT_HI : COL_LINE),
+            LV_PART_MAIN);
+    }
+
+    lv_label_set_text(s_link_lbl, wifi_level ? "LIVE" : "NO LINK");
+    lv_obj_set_style_text_color(s_link_lbl,
+        lv_color_hex(wifi_level ? COL_TEXT_MID : COL_TEXT_LO), 0);
+    lv_obj_set_style_bg_color(s_link_dot,
+        lv_color_hex(wifi_level ? COL_GOOD : COL_BAD), 0);
+}
+
+void scout_ui_overlay(const char *text)
+{
+    s_overlay_text = text;   // cached so a theme rebuild can restore it
+    if(text) {
+        lv_label_set_text(s_scene_label, text);
+        lv_obj_clear_flag(s_scene_overlay, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(s_scene_overlay, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+void scout_ui_intro_screen(uint8_t total_steps)
+{
+    s_intro_total = total_steps ? total_steps : 1;
+    s_intro_step  = 0;
+
+    // Overlay on the main screen — avoids lv_scr_load framebuffer issues
+    s_intro_overlay = lv_obj_create(lv_scr_act());
+    lv_obj_set_size(s_intro_overlay, SCREEN_W, SCREEN_H);
+    lv_obj_set_pos(s_intro_overlay, 0, 0);
+    lv_obj_set_style_bg_color(s_intro_overlay, lv_color_hex(COL_BG), 0);
+    lv_obj_set_style_bg_opa(s_intro_overlay, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(s_intro_overlay, 0, 0);
+    lv_obj_set_style_radius(s_intro_overlay, 0, 0);
+    lv_obj_set_style_pad_all(s_intro_overlay, 0, 0);
+    lv_obj_clear_flag(s_intro_overlay, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t *logo = lv_label_create(s_intro_overlay);
+    lv_label_set_text(logo, "SCOUT");
+    lv_obj_set_style_text_color(logo, lv_color_hex(COL_ACCENT), 0);
+    lv_obj_set_style_text_font(logo, LOGO_FONT, 0);
+    lv_obj_set_style_text_letter_space(logo, 6, 0);
+    lv_obj_align(logo, LV_ALIGN_CENTER, 0, -60);
+
+    lv_obj_t *track = lv_obj_create(s_intro_overlay);
+    lv_obj_set_size(track, INTRO_BAR_W, INTRO_BAR_H);
+    lv_obj_align(track, LV_ALIGN_CENTER, 0, 44);
+    lv_obj_set_style_bg_color(track, lv_color_hex(COL_PANEL), 0);
+    lv_obj_set_style_bg_opa(track, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(track, 1, 0);
+    lv_obj_set_style_border_color(track, lv_color_hex(COL_LINE), 0);
+    lv_obj_set_style_border_opa(track, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(track, INTRO_BAR_H / 2, 0);
+    lv_obj_set_style_pad_all(track, 2, 0);
+    lv_obj_clear_flag(track, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+
+    s_intro_bar_fill = lv_obj_create(track);
+    lv_obj_set_size(s_intro_bar_fill, 0, INTRO_FILL_H);
+    lv_obj_set_pos(s_intro_bar_fill, 0, 0);
+    lv_obj_set_style_radius(s_intro_bar_fill, INTRO_FILL_H / 2, 0);
+    lv_obj_set_style_bg_color(s_intro_bar_fill, lv_color_hex(COL_ACCENT_DEEP), 0);
+    lv_obj_set_style_bg_grad_color(s_intro_bar_fill, lv_color_hex(COL_ACCENT), 0);
+    lv_obj_set_style_bg_grad_dir(s_intro_bar_fill, LV_GRAD_DIR_HOR, 0);
+    lv_obj_set_style_bg_opa(s_intro_bar_fill, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(s_intro_bar_fill, 0, 0);
+    lv_obj_set_style_pad_all(s_intro_bar_fill, 0, 0);
+    lv_obj_clear_flag(s_intro_bar_fill, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+
+    // Status left-aligned and percentage right-aligned under the bar. Both
+    // labels get a fixed width and text alignment so changing text keeps the
+    // edges anchored without re-aligning.
+    s_intro_status = lv_label_create(s_intro_overlay);
+    lv_label_set_text(s_intro_status, "STARTING");
+    lv_obj_set_style_text_color(s_intro_status, lv_color_hex(COL_TEXT_MID), 0);
+    lv_obj_set_style_text_font(s_intro_status, UI_FONT, 0);
+    lv_obj_set_style_text_letter_space(s_intro_status, 4, 0);
+    lv_obj_set_width(s_intro_status, 240);
+    lv_obj_set_style_text_align(s_intro_status, LV_TEXT_ALIGN_LEFT, 0);
+    lv_obj_align(s_intro_status, LV_ALIGN_CENTER, -(INTRO_BAR_W / 2) + 122, 72);
+
+    s_intro_pct = lv_label_create(s_intro_overlay);
+    lv_label_set_text(s_intro_pct, "0%");
+    lv_obj_set_style_text_color(s_intro_pct, lv_color_hex(COL_TEXT_HI), 0);
+    lv_obj_set_style_text_font(s_intro_pct, UI_FONT, 0);
+    lv_obj_set_style_text_letter_space(s_intro_pct, 2, 0);
+    lv_obj_set_width(s_intro_pct, 80);
+    lv_obj_set_style_text_align(s_intro_pct, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_align(s_intro_pct, LV_ALIGN_CENTER, (INTRO_BAR_W / 2) - 40, 72);
+}
+
+void scout_ui_intro_step(const char *label)
+{
+    if(s_intro_overlay == NULL) return;
+
+    if(s_intro_step < s_intro_total) s_intro_step++;
+    lv_label_set_text(s_intro_status, label);
+    lv_label_set_text_fmt(s_intro_pct, "%d%%", 100 * s_intro_step / s_intro_total);
+    lv_obj_set_width(s_intro_bar_fill, INTRO_FILL_W * s_intro_step / s_intro_total);
+
+    if(s_intro_step == s_intro_total) {
+        lv_timer_t *t = lv_timer_create(intro_close_cb, INTRO_HOLD_MS, NULL);
+        lv_timer_set_repeat_count(t, 1);
+    }
+
+    // Render directly — during boot the render loop is not running yet,
+    // so this is what puts the step on screen while its init call blocks.
+    lv_refr_now(lv_disp_get_default());
+}
+
+uint8_t scout_ui_get_cmd(void) { return s_cmd; }

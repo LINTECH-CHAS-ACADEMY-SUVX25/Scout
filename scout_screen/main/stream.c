@@ -33,6 +33,7 @@ static void stream_run(void *arg)
     int sock = udp_open(VID_PORT);
     if(sock < 0) { ESP_LOGE(TAG, "failed to open UDP socket"); vTaskDelete(NULL); return; }
     udp_set_rcvbuf(sock, MAX_FRAGS * PKT_MAX);
+    udp_set_recv_timeout(sock, 1);
     cam_cmd_bind(sock);
     ESP_LOGI(TAG, "UDP video server on port %d", VID_PORT);
 
@@ -42,8 +43,20 @@ static void stream_run(void *arg)
         struct sockaddr_in src;
         int n = udp_rx(sock, frame_buf_pkt(), PKT_MAX, &src);
 
-        screen_status.cam_connected = wifi_ap_sta_count() > 0;
-        screen_status.streaming     = screen_state_is_streaming();
+        bool cam_connected = wifi_ap_sta_count() > 0;
+        bool streaming     = screen_state_is_streaming();
+        screen_status.cam_connected = cam_connected;
+        screen_status.streaming     = streaming;
+
+        if(!screen_state_has_streamed())  screen_state_set_scene(SCENE_WAITING);
+        else if(streaming)                screen_state_set_scene(SCENE_STREAMING);
+        else                              screen_state_set_scene(SCENE_DISCONNECTED);
+
+        // Recv timed out — no packet this iteration. Status and scene are already
+        // refreshed above, so skip reassembly. This timeout is what lets the loop
+        // re-evaluate liveness (and fire SCENE_DISCONNECTED) instead of blocking
+        // indefinitely in udp_rx when the cam goes silent.
+        if(n <= 0) continue;
 
         uint32_t      frame_len;
         int32_t       transfer_ms;

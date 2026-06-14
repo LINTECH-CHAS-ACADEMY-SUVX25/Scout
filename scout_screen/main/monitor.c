@@ -37,6 +37,7 @@ static void monitor_run(void *arg)
             .free_psram       = heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
             .sta_count        = wifi_ap_sta_count(),
             .stream_connected = screen_state_is_streaming(),
+            .scene            = screen_state_scene_name(screen_state_get_scene()),
         };
         monitor_diag_t diag = {
             .n_tasks    = uxTaskGetNumberOfTasks(),
