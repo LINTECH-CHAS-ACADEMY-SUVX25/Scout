@@ -19,7 +19,7 @@ void display_draw_bitmap(int x1, int y1, int x2, int y2, const void *pixels)
 
 bool display_read_touch(uint16_t *x, uint16_t *y)
 {
-    uint8_t cnt = 0;
+    uint8_t cnt = 0; 
     esp_lcd_touch_read_data(s_touch);
     return esp_lcd_touch_get_coordinates(s_touch, x, y, NULL, &cnt, 1);
 }
