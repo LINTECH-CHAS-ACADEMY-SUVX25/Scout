@@ -107,3 +107,15 @@ Pure renames — no logic changes.
   `screen_state_get → screen_stats_get` (2 occurrences).
 - `CMakeLists.txt`: added `adapters/screen_stats.c` to SRCS.
 - Verified: scout_screen builds.
+
+## Step 7 — fold `telemetry.{c,h}` into `stream_run` (scout_cam)
+
+- Deleted `scout_cam/main/telemetry.c` and `scout_cam/main/telemetry.h`.
+- `stream_run` now sends `cam_diag_pkt_t` inline every 2 s: elapsed-time check via
+  `esp_timer_get_time()` at the top of the loop (before streaming/fault branches), reusing
+  the existing `sock`. BME280 is read at that point; all other fields populated identically
+  to the old `telemetry_run`. No second socket needed.
+- `main.c`: removed `#include "telemetry.h"` and `telemetry_init()`.
+- `CMakeLists.txt`: removed `"telemetry.c"` from SRCS.
+- Added includes to `stream.c`: `bme280.h`, `esp_timer.h`, `esp_heap_caps.h`, `<math.h>`.
+- Verified: scout_cam builds and works.
