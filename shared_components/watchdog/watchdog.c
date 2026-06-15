@@ -21,7 +21,7 @@ void watchdog_init(const watchdog_config_t *cfg)
         ESP_LOGE(TAG, "init failed: %s", esp_err_to_name(err));
         return;
     }
-    ESP_LOGI(TAG, "armed: %d ms timeout, reboot on hang", WATCHDOG_TIMEOUT_MS);
+    ESP_LOGI(TAG, "armed: %d ms timeout, reboot on hang", config.timeout_ms);
 }
 
 void watchdog_register(void) { esp_task_wdt_add(NULL); }
