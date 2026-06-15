@@ -48,3 +48,43 @@ Pure renames — no logic changes.
   `frag_rx.c` (asm). Stale `frame_buf` references in comments also updated.
   `scout_screen/main/CMakeLists.txt`: `adapters/frame_buf.c` → `adapters/frame_pool.c`.
 - Verified: both scout_cam and scout_screen build.
+
+## Step 5 — monitor tree restructure; promote `uart_console` to adapter; delete `cam_diag_fmt`
+
+### Fold cam_diag task into stream_run
+
+- Removed `adapters/cam_diag.{c,h}` and its task (`cam_diag_init` / `cam_diag_run`).
+- `stream_run` now opens a second socket (`diag_sock = udp_open(DIAG_PORT)`) alongside the
+  video socket. At the bottom of each loop iteration it calls `udp_try_recv` non-blocking; on
+  a full `cam_diag_pkt_t` it forwards to `screen_state_set_cam`. Polling every ~1 s is enough
+  for telemetry that arrives every 2 s.
+- `monitor_init` no longer calls `cam_diag_init`.
+- `CMakeLists.txt`: removed `adapters/cam_diag.c` from SRCS.
+
+### Promote `uart_console` component → `adapters/console`
+
+- Deleted `scout_screen/components/uart_console/` (uart_console.c, uart_console.h,
+  CMakeLists.txt).
+- Created `scout_screen/main/adapters/console.{c,h}`. All public symbols use the `term_`
+  prefix (`term_init`, `term_write`, `term_println`, `term_printfln`, `term_read_byte`,
+  `term_try_getchar`, `term_read_line`, `term_run_handler`, `term_dispatch`,
+  `term_handler_t`). The `console_` prefix was taken by ESP-IDF's `esp_stdio` component
+  which defines `console_write` with C linkage internally.
+- All monitor command handlers and formatters that were in `monitor_cmds.c` moved into
+  `console.c`. `STREAM_LINE_COUNT` is now a local `#define` in `console.c`.
+- `monitor.c` reduced to `monitor_init()` + static `monitor_run()` only — no logic.
+- `CMakeLists.txt`: removed `uart_console` from REQUIRES, added `esp_driver_uart`; added
+  `adapters/console.c` to SRCS.
+
+### Delete `cam_diag_fmt` component; inline formatters
+
+- Deleted `scout_screen/components/cam_diag_fmt/` (cam_diag_fmt.c, cam_diag_fmt.h,
+  CMakeLists.txt). The component held three trivial `snprintf` wrappers (`fmt_temp`,
+  `fmt_humi`, `fmt_pres`).
+- Both consumers now carry their own `static` copies:
+  - `adapters/console.c` (used by `cmd_camdiag`)
+  - `components/ui/scout_ui.c` (used as callbacks in the `tele_field_t` table)
+- `scout_ui.c`: removed `#include "cam_diag_fmt.h"`, added `#include <stdio.h>`.
+- `components/ui/CMakeLists.txt`: removed `cam_diag_fmt` from REQUIRES.
+
+- Verified: scout_screen builds.

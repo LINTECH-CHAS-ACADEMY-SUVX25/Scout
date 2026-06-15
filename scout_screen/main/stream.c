@@ -30,8 +30,10 @@ void stream_init(void)
 
 static void stream_run(void *arg)
 {
-    int sock = udp_open(VID_PORT);
+    int sock      = udp_open(VID_PORT);
+    int diag_sock = udp_open(DIAG_PORT);
     if(sock < 0) { ESP_LOGE(TAG, "failed to open UDP socket"); vTaskDelete(NULL); return; }
+    if(diag_sock < 0) ESP_LOGW(TAG, "failed to open DIAG socket — cam diagnostics unavailable");
     udp_set_rcvbuf(sock, MAX_FRAGS * PKT_MAX);
     udp_set_recv_timeout(sock, 1);
     rc_tx_bind(sock);
@@ -51,6 +53,12 @@ static void stream_run(void *arg)
         if(!screen_state_has_streamed())  screen_state_set_scene(SCENE_WAITING);
         else if(streaming)                screen_state_set_scene(SCENE_STREAMING);
         else                              screen_state_set_scene(SCENE_DISCONNECTED);
+
+        if(diag_sock >= 0) {
+            cam_diag_pkt_t dpkt;
+            if(udp_try_recv(diag_sock, &dpkt, sizeof(dpkt)) == (int)sizeof(dpkt))
+                screen_state_set_cam(&dpkt);
+        }
 
         // Recv timed out — no packet this iteration. Status and scene are already
         // refreshed above, so skip reassembly. This timeout is what lets the loop
