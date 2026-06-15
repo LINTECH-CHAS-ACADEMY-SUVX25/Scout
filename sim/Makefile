@@ -2,16 +2,17 @@
 # scout_screen/components/ui och länkar mot SDL2.
 # Objektfiler hamnar under build/.
 
-PORT  := ../scout_screen/components/lvgl_port
-UI    := ../scout_screen/components/ui
-LVGL  := $(PORT)/lvgl__lvgl
-RC    := ../shared_components/rc_protocol
-BUILD := build
+PORT     := ../scout_screen/components/lvgl_port
+UI       := ../scout_screen/components/ui
+LVGL     := $(PORT)/lvgl__lvgl
+RC       := ../shared_components/rc_protocol
+CAM_DIAG := ../scout_screen/components/cam_diag_fmt
+BUILD    := build
 
 # -I. står före -I$(UI) så att simulatorns lv_conf.h och display.h
 # vinner över enhetens vid quote-include-sökningen.
 CC      := cc
-CFLAGS  := -O2 -g -Wall -I. -I$(LVGL) -I$(RC) -I$(UI) \
+CFLAGS  := -O2 -g -Wall -I. -I$(LVGL) -I$(RC) -I$(UI) -I$(CAM_DIAG) \
            -DLV_CONF_INCLUDE_SIMPLE -DLV_LVGL_H_INCLUDE_SIMPLE \
            $(shell sdl2-config --cflags)
 LDFLAGS := $(shell sdl2-config --libs) -lm
@@ -23,7 +24,7 @@ UI_OBJ   := $(patsubst $(UI)/%.c,$(BUILD)/ui/%.o,$(UI_SRC))
 APP_SRC  := $(wildcard *.c)
 APP_OBJ  := $(patsubst %.c,$(BUILD)/%.o,$(APP_SRC))
 
-sim: $(APP_OBJ) $(UI_OBJ) $(LVGL_OBJ)
+sim: $(APP_OBJ) $(UI_OBJ) $(BUILD)/ui/cam_diag_fmt.o $(LVGL_OBJ)
 	$(CC) $^ -o $@ $(LDFLAGS)
 
 $(BUILD)/%.o: %.c
@@ -31,6 +32,10 @@ $(BUILD)/%.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD)/ui/%.o: $(UI)/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/ui/cam_diag_fmt.o: $(CAM_DIAG)/cam_diag_fmt.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
