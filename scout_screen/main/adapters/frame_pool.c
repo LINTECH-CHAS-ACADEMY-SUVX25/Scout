@@ -33,7 +33,7 @@ void frame_pool_init(void)
 uint8_t *frame_pool_asm(void) { return s_asm_buf; }
 uint8_t *frame_pool_pkt(void) { return s_pkt;     }
 
-void frame_buf_pool_render_task(TaskHandle_t task) { s_render_task = task; }
+void frame_pool_set_render_task(TaskHandle_t task) { s_render_task = task; }
 
 void frame_pool_publish(uint32_t len)
 {
