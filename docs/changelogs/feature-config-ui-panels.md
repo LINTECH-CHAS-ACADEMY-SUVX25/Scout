@@ -37,19 +37,6 @@ placerade för att ta emot riktig config-logik när den kopplas in.
 - Fyra slider-callbacks: `slider_num_event`, `slider_interval_event`,
   `slider_osample_event`, `slider_filter_event`
 
-## Ändrat
-
-- `config_apply_event` (stängde båda panels) ersatt av `panel_close_event`
-  som tar emot panelen att stänga som `user_data` — hook-punkten för
-  config-logiken är nu per panel, inte delad
-- Slider-knobben minskad från 14 px till 8 px (pad 4→2), track tunnare
-  (6→4 px), båda med full pill-radius — renare och mer i linje med övrig UI
-
-## Borttaget
-
-- `make_cfg_card` och `config_apply_event` — ersatta av slider-infrastrukturen
-  och `panel_close_event`
-
 ## Verifierat
 
 - Simulatorn (`sim/`) bygger rent utan varningar efter varje steg
