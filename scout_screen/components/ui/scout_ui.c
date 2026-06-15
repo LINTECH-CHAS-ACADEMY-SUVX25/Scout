@@ -56,7 +56,7 @@
 #define PAD         14
 #define ROW_W       (SIDE_W - 2 * PAD)
 #define HDR_Y       12                  // section header at the top of each panel
-#define TELE_CARD_Y 78                  // centres the card in the space below the header
+#define HDR_BOTTOM  (HDR_Y + 18)        // y where the section-header rule ends
 #define TELE_PITCH  30                  // row spacing in the telemetry
 
 // Command badges (FWD/BWD/STP/LFT/RGT)
@@ -75,9 +75,14 @@
 #define TELE_ROW_W  (ROW_W - 2 * CARD_PAD - 2)
 #define TELE_CARD_H (2 * TELE_PITCH + 22 + 2 * (CARD_PAD + 1))
 
-// Floating corner panels — telemetry top right, joystick bottom left,
-// both the same size for visual symmetry
-#define PANEL_H 236
+// Floating corner panels. The joystick panel uses the full PANEL_H; the
+// telemetry panel only wraps its card with an equal gap above and below it
+// (TELE_PAD_V), so the card sits centred under the header and the panel is
+// shorter — leaving more breathing room between it and the joystick below.
+#define PANEL_H      236
+#define TELE_PAD_V   20                                  // gap above & below the telemetry card
+#define TELE_CARD_Y  (HDR_BOTTOM + TELE_PAD_V)           // centres the card under the header
+#define TELE_PANEL_H (TELE_CARD_Y + TELE_CARD_H + TELE_PAD_V)
 
 // Crosshatch texture tiled across the card backgrounds — diagonals in both
 // directions form a diamond pattern. The lines are COL_LINE at low opacity
@@ -665,10 +670,12 @@ static void panel_close_event(lv_event_t *e)
     s_config_open = false;
 }
 
-// Toggles the CONFIG panel; registered to the CONFIG topbar label.
+// Toggles the CONFIG panel; registered to the CONFIG topbar label. Also
+// dismisses the THEMES dropdown so the two never sit open at once.
 static void config_event(lv_event_t *e)
 {
     (void)e;
+    lv_obj_add_flag(s_theme_menu, LV_OBJ_FLAG_HIDDEN);
     s_config_open = !s_config_open;
     if(s_config_open) {
         lv_obj_clear_flag(s_cfg_panel, LV_OBJ_FLAG_HIDDEN);
@@ -891,7 +898,7 @@ static void make_tele_panel(void)
 {
     lv_obj_t *tele_panel = make_panel(PANEL_GAP,
                                       CAM_Y,
-                                      SIDE_W, PANEL_H);
+                                      SIDE_W, TELE_PANEL_H);
 
     make_section_hdr(tele_panel, "TELEMETRI", HDR_Y);
 
