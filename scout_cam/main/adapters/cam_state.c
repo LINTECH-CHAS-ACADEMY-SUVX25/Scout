@@ -2,14 +2,35 @@
 #include "motor_cmd.h"
 #include "rc_protocol.h"
 #include "wifi_sta.h"
+#include "camera.h"
 #include "udp.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "esp_log.h"
 
-#define SILENT_FRAMES_MAX 150
+#define SILENT_FRAMES_MAX     150
+#define CAMERA_INIT_ATTEMPTS  3
+
+// Backoff before each attempt — power-on glitches often succeed on attempt 2.
+static const uint16_t s_camera_backoff_ms[CAMERA_INIT_ATTEMPTS] = { 0, 500, 2000 };
 
 static const char *TAG = "cam_state";
 
 cam_status_t cam_status;
+
+bool cam_state_camera_start(void)
+{
+    for(int i = 0; i < CAMERA_INIT_ATTEMPTS; i++) {
+        if(s_camera_backoff_ms[i]) vTaskDelay(pdMS_TO_TICKS(s_camera_backoff_ms[i]));
+        if(camera_init() == ESP_OK) return true;
+        ESP_LOGW(TAG, "camera init attempt %d/%d failed", i + 1, CAMERA_INIT_ATTEMPTS);
+    }
+    ESP_LOGE(TAG, "camera unavailable — running degraded (motors + telemetry, no video)");
+    cam_status.camera_fault = true;
+    ESP_LOGE(TAG, "camera init failed — rebooting");
+    esp_restart();
+    return false;
+}
 
 static bool s_reconnect_pending;
 static int  s_silent_frames;
