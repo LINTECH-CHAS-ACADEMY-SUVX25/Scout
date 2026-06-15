@@ -2,4 +2,3 @@ dependencies:
   idf: ">=5.0"
   espressif/esp32-camera:
     version: ">=2.0.4"
-  espressif/esp_new_jpeg: "*"
