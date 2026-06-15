@@ -1,1 +1,0 @@
-Flyttade TODO.md->old eftersom den inte är uppdaterad, finns fortfarande relevant info där men måste överses
