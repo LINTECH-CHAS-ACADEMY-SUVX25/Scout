@@ -19,10 +19,26 @@
 // Intro overlay loading bar — slim rounded track with a gradient fill.
 // The fill sits inside the track's 1px border + 2px padding (3px inset/side).
 #define INTRO_BAR_W   440
-#define INTRO_BAR_H   14
+#define INTRO_BAR_H   10
 #define INTRO_FILL_W  (INTRO_BAR_W - 6)
 #define INTRO_FILL_H  (INTRO_BAR_H - 6)
 #define INTRO_HOLD_MS 1200   // how long the finished bar stays before the overlay closes
+
+// Intro layout, all measured from the screen centre. The hero (wordmark +
+// divider + subtitle) sits above a status line and the loading bar; corner
+// brackets and header/footer hairlines frame it like the rest of the UI.
+#define INTRO_LOGO_Y    (-96)   // wordmark baseline offset
+#define INTRO_RULE_Y    (-26)   // accent divider under the wordmark
+#define INTRO_SUB_Y     (-4)    // subtitle under the divider
+#define INTRO_DOTS_Y    64      // boot-step dots
+#define INTRO_BAR_Y     96      // loading bar
+#define INTRO_TEXT_Y    122     // status + percentage row
+#define INTRO_RULE_W    300     // accent divider width
+#define INTRO_FRAME     28      // inset of the corner brackets from the screen edge
+#define INTRO_CORNER    34      // corner bracket arm length
+#define INTRO_TAG_DY    (INTRO_FRAME + INTRO_CORNER / 2 - 4) // header/footer text, vertically centred on the bracket
+#define INTRO_DOT_GAP   22      // spacing between boot-step dots
+#define INTRO_MAX_STEPS 12      // cap on dots built in scout_ui_intro_screen
 
 // Layout — a left sidebar flanks the centred camera area. BAR_H is the same
 // for top and bottom so the camera sits vertically symmetric.
@@ -143,6 +159,7 @@ static lv_obj_t *s_intro_overlay;
 static lv_obj_t *s_intro_bar_fill;
 static lv_obj_t *s_intro_status;
 static lv_obj_t *s_intro_pct;
+static lv_obj_t *s_intro_dots[INTRO_MAX_STEPS]; // one per boot step, lit as it completes
 static uint8_t   s_intro_total;
 static uint8_t   s_intro_step;
 static lv_obj_t *s_knob;
@@ -1157,9 +1174,34 @@ void scout_ui_overlay(const char *text)
     }
 }
 
+// One L-shaped viewfinder bracket on the intro overlay, mirroring the camera
+// corners in the main UI. side selects which two edges form the L.
+static void intro_corner(int32_t x, int32_t y, lv_border_side_t side)
+{
+    lv_obj_t *c = make_obj(s_intro_overlay);
+    lv_obj_set_size(c, INTRO_CORNER, INTRO_CORNER);
+    lv_obj_set_pos(c, x, y);
+    lv_obj_set_style_border_width(c, 2, 0);
+    lv_obj_set_style_border_color(c, lv_color_hex(COL_ACCENT), 0);
+    lv_obj_set_style_border_side(c, side, 0);
+    lv_obj_set_style_border_opa(c, LV_OPA_50, 0);
+}
+
+// A header/footer hairline label — small, wide-tracked, sits on the bare
+// background to frame the hero the way the top/bottom bars frame the UI.
+static lv_obj_t *intro_frame_label(const char *text, lv_color_t color,
+                                   lv_align_t align, int32_t x, int32_t y)
+{
+    lv_obj_t *l = make_label(s_intro_overlay, text, color, UI_FONT);
+    lv_obj_set_style_text_letter_space(l, 2, 0);
+    lv_obj_align(l, align, x, y);
+    return l;
+}
+
 void scout_ui_intro_screen(uint8_t total_steps)
 {
     s_intro_total = total_steps ? total_steps : 1;
+    if(s_intro_total > INTRO_MAX_STEPS) s_intro_total = INTRO_MAX_STEPS;
     s_intro_step  = 0;
 
     // Overlay on the main screen — avoids lv_scr_load framebuffer issues
@@ -1173,16 +1215,80 @@ void scout_ui_intro_screen(uint8_t total_steps)
     lv_obj_set_style_pad_all(s_intro_overlay, 0, 0);
     lv_obj_clear_flag(s_intro_overlay, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
 
+    // Viewfinder brackets at the four corners — the signature framing motif.
+    intro_corner(INTRO_FRAME, INTRO_FRAME,
+                 LV_BORDER_SIDE_LEFT | LV_BORDER_SIDE_TOP);
+    intro_corner(SCREEN_W - INTRO_FRAME - INTRO_CORNER, INTRO_FRAME,
+                 LV_BORDER_SIDE_RIGHT | LV_BORDER_SIDE_TOP);
+    intro_corner(INTRO_FRAME, SCREEN_H - INTRO_FRAME - INTRO_CORNER,
+                 LV_BORDER_SIDE_LEFT | LV_BORDER_SIDE_BOTTOM);
+    intro_corner(SCREEN_W - INTRO_FRAME - INTRO_CORNER,
+                 SCREEN_H - INTRO_FRAME - INTRO_CORNER,
+                 LV_BORDER_SIDE_RIGHT | LV_BORDER_SIDE_BOTTOM);
+
+    // Header hairline: maker brand left, boot tag right — vertically centred
+    // on the corner brackets.
+    intro_frame_label("LINTECH", lv_color_hex(COL_TEXT_LO),
+                      LV_ALIGN_TOP_LEFT, INTRO_FRAME + 14, INTRO_TAG_DY);
+    intro_frame_label("BOOT SEQUENCE", lv_color_hex(COL_TEXT_LO),
+                      LV_ALIGN_TOP_RIGHT, -(INTRO_FRAME + 14), INTRO_TAG_DY);
+
+    // Footer hairline: firmware version left, RTOS tag right (accent value),
+    // matching the bottom bar's RTOS | FREERTOS cluster.
+    intro_frame_label("FW v1.0.0", lv_color_hex(COL_TEXT_LO),
+                      LV_ALIGN_BOTTOM_LEFT, INTRO_FRAME + 14, -INTRO_TAG_DY);
+    intro_frame_label("FREERTOS", lv_color_hex(COL_ACCENT),
+                      LV_ALIGN_BOTTOM_RIGHT, -(INTRO_FRAME + 14), -INTRO_TAG_DY);
+    intro_frame_label("RTOS", lv_color_hex(COL_TEXT_LO),
+                      LV_ALIGN_BOTTOM_RIGHT, -(INTRO_FRAME + 106), -INTRO_TAG_DY);
+
+    // Hero wordmark with a soft accent glow.
     lv_obj_t *logo = lv_label_create(s_intro_overlay);
     lv_label_set_text(logo, "SCOUT");
     lv_obj_set_style_text_color(logo, lv_color_hex(COL_ACCENT), 0);
     lv_obj_set_style_text_font(logo, LOGO_FONT, 0);
-    lv_obj_set_style_text_letter_space(logo, 6, 0);
-    lv_obj_align(logo, LV_ALIGN_CENTER, 0, -60);
+    lv_obj_set_style_text_letter_space(logo, 8, 0);
+    lv_obj_align(logo, LV_ALIGN_CENTER, 4, INTRO_LOGO_Y);   // +4 optical centre vs letter-space
+
+    // Accent divider under the wordmark — a centred line fading out to each
+    // side, built from two mirrored gradient halves.
+    lv_obj_t *rule_l = make_obj(s_intro_overlay);
+    lv_obj_set_size(rule_l, INTRO_RULE_W / 2, 2);
+    lv_obj_align(rule_l, LV_ALIGN_CENTER, -INTRO_RULE_W / 4, INTRO_RULE_Y);
+    lv_obj_set_style_bg_color(rule_l, lv_color_hex(COL_BG), 0);
+    lv_obj_set_style_bg_grad_color(rule_l, lv_color_hex(COL_ACCENT), 0);
+    lv_obj_set_style_bg_grad_dir(rule_l, LV_GRAD_DIR_HOR, 0);
+    lv_obj_set_style_bg_opa(rule_l, LV_OPA_COVER, 0);
+
+    lv_obj_t *rule_r = make_obj(s_intro_overlay);
+    lv_obj_set_size(rule_r, INTRO_RULE_W / 2, 2);
+    lv_obj_align(rule_r, LV_ALIGN_CENTER, INTRO_RULE_W / 4, INTRO_RULE_Y);
+    lv_obj_set_style_bg_color(rule_r, lv_color_hex(COL_ACCENT), 0);
+    lv_obj_set_style_bg_grad_color(rule_r, lv_color_hex(COL_BG), 0);
+    lv_obj_set_style_bg_grad_dir(rule_r, LV_GRAD_DIR_HOR, 0);
+    lv_obj_set_style_bg_opa(rule_r, LV_OPA_COVER, 0);
+
+    // Subtitle / product line.
+    lv_obj_t *sub = make_label(s_intro_overlay, "DEVELOPED BY LINTECH",
+        lv_color_hex(COL_TEXT_MID), UI_FONT);
+    lv_obj_set_style_text_letter_space(sub, 8, 0);
+    lv_obj_align(sub, LV_ALIGN_CENTER, 0, INTRO_SUB_Y);
+
+    // Boot-step dots — one per init step, centred, lit as each step completes.
+    int32_t dots_x0 = -(int32_t)(s_intro_total - 1) * INTRO_DOT_GAP / 2;
+    for(int i = 0; i < s_intro_total; i++) {
+        lv_obj_t *d = make_obj(s_intro_overlay);
+        lv_obj_set_size(d, 6, 6);
+        lv_obj_align(d, LV_ALIGN_CENTER, dots_x0 + i * INTRO_DOT_GAP, INTRO_DOTS_Y);
+        lv_obj_set_style_radius(d, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_color(d, lv_color_hex(COL_LINE), 0);
+        lv_obj_set_style_bg_opa(d, LV_OPA_COVER, 0);
+        s_intro_dots[i] = d;
+    }
 
     lv_obj_t *track = lv_obj_create(s_intro_overlay);
     lv_obj_set_size(track, INTRO_BAR_W, INTRO_BAR_H);
-    lv_obj_align(track, LV_ALIGN_CENTER, 0, 44);
+    lv_obj_align(track, LV_ALIGN_CENTER, 0, INTRO_BAR_Y);
     lv_obj_set_style_bg_color(track, lv_color_hex(COL_PANEL), 0);
     lv_obj_set_style_bg_opa(track, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(track, 1, 0);
@@ -1202,11 +1308,23 @@ void scout_ui_intro_screen(uint8_t total_steps)
     lv_obj_set_style_bg_opa(s_intro_bar_fill, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(s_intro_bar_fill, 0, 0);
     lv_obj_set_style_pad_all(s_intro_bar_fill, 0, 0);
+    // Accent glow so the fill reads as energised, not a flat block.
+    lv_obj_set_style_shadow_color(s_intro_bar_fill, lv_color_hex(COL_ACCENT), 0);
+    lv_obj_set_style_shadow_width(s_intro_bar_fill, 12, 0);
+    lv_obj_set_style_shadow_spread(s_intro_bar_fill, 0, 0);
+    lv_obj_set_style_shadow_opa(s_intro_bar_fill, LV_OPA_40, 0);
     lv_obj_clear_flag(s_intro_bar_fill, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
 
-    // Status left-aligned and percentage right-aligned under the bar. Both
-    // labels get a fixed width and text alignment so changing text keeps the
-    // edges anchored without re-aligning.
+    // Status row: an accent activity dot, the current step left-aligned, and
+    // the percentage right-aligned. Fixed widths + alignment keep the edges
+    // anchored to the bar as the text changes.
+    lv_obj_t *sdot = make_obj(s_intro_overlay);
+    lv_obj_set_size(sdot, 6, 6);
+    lv_obj_align(sdot, LV_ALIGN_CENTER, -(INTRO_BAR_W / 2) + 3, INTRO_TEXT_Y);
+    lv_obj_set_style_radius(sdot, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(sdot, lv_color_hex(COL_ACCENT), 0);
+    lv_obj_set_style_bg_opa(sdot, LV_OPA_COVER, 0);
+
     s_intro_status = lv_label_create(s_intro_overlay);
     lv_label_set_text(s_intro_status, "STARTING");
     lv_obj_set_style_text_color(s_intro_status, lv_color_hex(COL_TEXT_MID), 0);
@@ -1214,7 +1332,7 @@ void scout_ui_intro_screen(uint8_t total_steps)
     lv_obj_set_style_text_letter_space(s_intro_status, 4, 0);
     lv_obj_set_width(s_intro_status, 240);
     lv_obj_set_style_text_align(s_intro_status, LV_TEXT_ALIGN_LEFT, 0);
-    lv_obj_align(s_intro_status, LV_ALIGN_CENTER, -(INTRO_BAR_W / 2) + 122, 72);
+    lv_obj_align(s_intro_status, LV_ALIGN_CENTER, -(INTRO_BAR_W / 2) + 136, INTRO_TEXT_Y);
 
     s_intro_pct = lv_label_create(s_intro_overlay);
     lv_label_set_text(s_intro_pct, "0%");
@@ -1223,7 +1341,7 @@ void scout_ui_intro_screen(uint8_t total_steps)
     lv_obj_set_style_text_letter_space(s_intro_pct, 2, 0);
     lv_obj_set_width(s_intro_pct, 80);
     lv_obj_set_style_text_align(s_intro_pct, LV_TEXT_ALIGN_RIGHT, 0);
-    lv_obj_align(s_intro_pct, LV_ALIGN_CENTER, (INTRO_BAR_W / 2) - 40, 72);
+    lv_obj_align(s_intro_pct, LV_ALIGN_CENTER, (INTRO_BAR_W / 2) - 40, INTRO_TEXT_Y);
 }
 
 void scout_ui_intro_step(const char *label)
@@ -1234,6 +1352,13 @@ void scout_ui_intro_step(const char *label)
     lv_label_set_text(s_intro_status, label);
     lv_label_set_text_fmt(s_intro_pct, "%d%%", 100 * s_intro_step / s_intro_total);
     lv_obj_set_width(s_intro_bar_fill, INTRO_FILL_W * s_intro_step / s_intro_total);
+
+    // Light the dot for the step that just completed.
+    if(s_intro_step >= 1 && s_intro_step <= s_intro_total &&
+       s_intro_dots[s_intro_step - 1]) {
+        lv_obj_set_style_bg_color(s_intro_dots[s_intro_step - 1],
+                                  lv_color_hex(COL_ACCENT), 0);
+    }
 
     if(s_intro_step == s_intro_total) {
         lv_timer_t *t = lv_timer_create(intro_close_cb, INTRO_HOLD_MS, NULL);
