@@ -88,3 +88,22 @@ Pure renames — no logic changes.
 - `components/ui/CMakeLists.txt`: removed `cam_diag_fmt` from REQUIRES.
 
 - Verified: scout_screen builds.
+
+## Step 6 — split `screen_state` → `screen_state` + `screen_stats`
+
+- New `scout_screen/main/adapters/screen_stats.{c,h}`. Owns everything timing/metrics:
+  `tick_slot_t`, `screen_tick_t`, 9 `ring_buf_t` statics, `screen_stats_t` (renamed from
+  `screen_state_t`), and `screen_stats_{render,stream}_tick_init / tick / tick_split / get`.
+  When the `updates_streaming` slot commits, calls `screen_state_mark_rx_time(now_ms)`
+  instead of writing `s_last_rx_ms` directly — one-way dependency, no cycle.
+- `screen_state.{c,h}` now owns only: scene FSM (`scene_t`, set/get/name), cam-diag cache
+  (`set_cam`, `get_cam`, `cam_dirty_take`), `screen_status_t`, `is_streaming`, `has_streamed`,
+  and the new `screen_state_mark_rx_time` setter. Ring-buffer include removed.
+- `render.c`: added `screen_stats.h`; renamed `screen_state_render_tick_init → screen_stats_render_tick_init`,
+  `screen_state_tick → screen_stats_tick`, `screen_state_tick_split → screen_stats_tick_split` (×3).
+- `stream.c`: added `screen_stats.h`; renamed `screen_state_stream_tick_init → screen_stats_stream_tick_init`,
+  `screen_state_tick → screen_stats_tick`.
+- `console.c`: added `screen_stats.h`; renamed `screen_state_t → screen_stats_t` (4 occurrences),
+  `screen_state_get → screen_stats_get` (2 occurrences).
+- `CMakeLists.txt`: added `adapters/screen_stats.c` to SRCS.
+- Verified: scout_screen builds.

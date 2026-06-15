@@ -1,5 +1,6 @@
 #include "console.h"
 #include "screen_state.h"
+#include "screen_stats.h"
 #include "wifi_ap.h"
 #include "rc_protocol.h"
 #include "esp_log.h"
@@ -152,7 +153,7 @@ static void fmt_fps(char *buf, size_t size, uint32_t tenths)
         (unsigned long)(tenths / 10), (unsigned long)(tenths % 10));
 }
 
-static void stat_receive(const screen_state_t *s)
+static void stat_receive(const screen_stats_t *s)
 {
     char val[16];
     char avg[16];
@@ -182,7 +183,7 @@ static void stat_receive(const screen_state_t *s)
     stat_row("loop", val, avg);
 }
 
-static void stat_render(const screen_state_t *s)
+static void stat_render(const screen_stats_t *s)
 {
     char val[16];
     char avg[16];
@@ -211,7 +212,7 @@ static void stat_render(const screen_state_t *s)
     stat_row("loop", val, avg);
 }
 
-static void cmd_stream_output(const screen_state_t *s)
+static void cmd_stream_output(const screen_stats_t *s)
 {
     term_println("=== STREAM ===");
     stat_receive(s);
@@ -233,13 +234,13 @@ static void cmd_stream_live(void)
 {
     char up_seq[12];
     snprintf(up_seq, sizeof(up_seq), "\033[%dA", STREAM_LINE_COUNT);
-    screen_state_t stats;
-    screen_state_get(&stats);
+    screen_stats_t stats;
+    screen_stats_get(&stats);
     cmd_stream_output(&stats);
     while(1) {
         vTaskDelay(pdMS_TO_TICKS(200));
         if(term_try_getchar() == 'q') break;
-        screen_state_get(&stats);
+        screen_stats_get(&stats);
         term_write(up_seq);
         term_write("\033[J");
         cmd_stream_output(&stats);

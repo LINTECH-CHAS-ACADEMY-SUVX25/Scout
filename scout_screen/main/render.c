@@ -1,6 +1,7 @@
 #include "render.h"
 #include "frame_pool.h"
 #include "screen_state.h"
+#include "screen_stats.h"
 #include "scene.h"
 #include "rc_tx.h"
 #include "lvgl_port.h"
@@ -37,7 +38,7 @@ static void render_run(void *arg);
 void render_init(void)
 {
     jpeg_init_canvas(CAM_W, CAM_H);
-    screen_state_render_tick_init(&s_tick);
+    screen_stats_render_tick_init(&s_tick);
     lvgl_port_set_video_region(CAM_X, CAM_Y, CAM_W, CAM_H);
     xTaskCreatePinnedToCore(render_run, "render", 8192, NULL, 4, NULL, 1);
     ESP_LOGI(TAG, "canvas %dx%d allocated", CAM_W, CAM_H);
@@ -49,7 +50,7 @@ static void render_run(void *arg)
 
     while(1) {
         watchdog_reset();
-        screen_state_tick(&s_tick);
+        screen_stats_tick(&s_tick);
 
         if(screen_state_cam_dirty_take()) {
             cam_diag_pkt_t cam;
@@ -67,7 +68,7 @@ static void render_run(void *arg)
         lvgl_port_video_lock(streaming);
 
         lvgl_port_render_frame();
-        screen_state_tick_split(&s_tick, &s_tick.lvgl);
+        screen_stats_tick_split(&s_tick, &s_tick.lvgl);
 
         int16_t jx, jy;
         scout_ui_get_joy(&jx, &jy);
@@ -80,14 +81,14 @@ static void render_run(void *arg)
             bool ok = jpeg_decode_rgb565(src, (int)src_len,
                                          (uint8_t *)jpeg_canvas_get(),
                                          CAM_W * CAM_H * sizeof(uint16_t), NULL, NULL);
-            screen_state_tick_split(&s_tick, &s_tick.decode);
+            screen_stats_tick_split(&s_tick, &s_tick.decode);
             frame_pool_release();
 
             // Gated on streaming so a buffered frame can't overwrite the scene overlay
             // (the blit bypasses LVGL, so LVGL would not know to redraw the overlay).
             if(ok && streaming) {
                 display_blit_region(CAM_X, CAM_Y, CAM_W, CAM_H, jpeg_canvas_get());
-                screen_state_tick_split(&s_tick, &s_tick.blit);
+                screen_stats_tick_split(&s_tick, &s_tick.blit);
             }
         }
 

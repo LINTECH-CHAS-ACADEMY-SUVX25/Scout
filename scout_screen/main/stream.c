@@ -1,6 +1,7 @@
 #include "stream.h"
 #include "frame_pool.h"
 #include "screen_state.h"
+#include "screen_stats.h"
 #include "rc_tx.h"
 #include "frag_rx.h"
 #include "udp.h"
@@ -24,7 +25,7 @@ void stream_init(void)
 {
     frame_pool_init();
     rc_tx_init();
-    screen_state_stream_tick_init(&s_tick);
+    screen_stats_stream_tick_init(&s_tick);
     xTaskCreatePinnedToCore(stream_run, "udp_server", 4096, NULL, 5, NULL, 0);
 }
 
@@ -40,7 +41,7 @@ static void stream_run(void *arg)
     ESP_LOGI(TAG, "UDP video server on port %d", VID_PORT);
 
     while(1) {
-        screen_state_tick(&s_tick);
+        screen_stats_tick(&s_tick);
 
         struct sockaddr_in src;
         int n = udp_rx(sock, frame_pool_pkt(), PKT_MAX, &src);
