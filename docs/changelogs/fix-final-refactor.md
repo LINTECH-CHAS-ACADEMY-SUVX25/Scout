@@ -28,3 +28,23 @@ Issue #60 (Namngivning och single-responsibility-genomgång) execution sequence.
 - `scout_cam/CMakeLists.txt`: added `set(COMPONENTS main)` so cam builds only `main` and its
   transitive dependencies, excluding `jpeg`, `scout_hal`, `unity`, and `cmock`.
 - Verified: both scout_cam and scout_screen build.
+
+## Step 3 — rename adapters: motor_queue, rc_tx, frame_pool
+
+Pure renames — no logic changes.
+
+- `scout_cam/main/adapters/motor_cmd.{c,h}` → `motor_queue.{c,h}` (git mv).
+  All symbols renamed: `motor_cmd_init/send/recv` → `motor_queue_init/send/recv`.
+  Updated callers: `cam_state.c` (3× send), `motor.c` (init + recv), `stream.c` (1× send).
+  `scout_cam/main/CMakeLists.txt`: `adapters/motor_cmd.c` → `adapters/motor_queue.c`.
+- `scout_screen/main/adapters/cam_cmd.{c,h}` → `rc_tx.{c,h}` (git mv).
+  All symbols renamed: `cam_cmd_*` → `rc_tx_*` (init, bind, learn, send, send_throttled).
+  Updated callers: `stream.c` (init/bind/learn), `render.c` (send_throttled).
+  `scout_screen/main/CMakeLists.txt`: `adapters/cam_cmd.c` → `adapters/rc_tx.c`.
+- `scout_screen/main/adapters/frame_buf.{c,h}` → `frame_pool.{c,h}` (git mv).
+  All symbols renamed: `frame_buf_*` → `frame_pool_*` (init, asm, pkt, publish,
+  try_acquire, release).
+  Updated callers: `stream.c` (init/pkt/publish), `render.c` (try_acquire/release),
+  `frag_rx.c` (asm). Stale `frame_buf` references in comments also updated.
+  `scout_screen/main/CMakeLists.txt`: `adapters/frame_buf.c` → `adapters/frame_pool.c`.
+- Verified: both scout_cam and scout_screen build.

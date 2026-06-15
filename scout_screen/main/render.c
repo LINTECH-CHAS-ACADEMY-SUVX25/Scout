@@ -1,8 +1,8 @@
 #include "render.h"
-#include "frame_buf.h"
+#include "frame_pool.h"
 #include "screen_state.h"
 #include "scene.h"
-#include "cam_cmd.h"
+#include "rc_tx.h"
 #include "lvgl_port.h"
 #include "scout_ui.h"
 #include "display.h"
@@ -71,17 +71,17 @@ static void render_run(void *arg)
 
         int16_t jx, jy;
         scout_ui_get_joy(&jx, &jy);
-        cam_cmd_send_throttled(jx, jy);
+        rc_tx_send_throttled(jx, jy);
 
         // Only blit when a new frame was decoded. LVGL redraws just its dirty areas which don't overlap the camera region
         const uint8_t *src;
         uint32_t       src_len;
-        if(frame_buf_try_acquire(&src, &src_len)) {
+        if(frame_pool_try_acquire(&src, &src_len)) {
             bool ok = jpeg_decode_rgb565(src, (int)src_len,
                                          (uint8_t *)jpeg_canvas_get(),
                                          CAM_W * CAM_H * sizeof(uint16_t), NULL, NULL);
             screen_state_tick_split(&s_tick, &s_tick.decode);
-            frame_buf_release();
+            frame_pool_release();
 
             // Gated on streaming so a buffered frame can't overwrite the scene overlay
             // (the blit bypasses LVGL, so LVGL would not know to redraw the overlay).

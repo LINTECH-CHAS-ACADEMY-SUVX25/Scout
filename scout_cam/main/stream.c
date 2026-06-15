@@ -2,7 +2,7 @@
 #include "cam_state.h"
 #include "frag_tx.h"
 #include "camera.h"
-#include "motor_cmd.h"
+#include "motor_queue.h"
 #include "watchdog.h"
 #include "udp.h"
 #include "rc_protocol.h"
@@ -61,7 +61,7 @@ static void stream_run(void *arg)
         size_t len;
         if(!camera_capture(&buf, &len)) {
             ESP_LOGE(TAG, "camera capture failed");
-            motor_cmd_send(0, 0);
+            motor_queue_send(0, 0);
             vTaskDelay(pdMS_TO_TICKS(100));
             continue;
         }

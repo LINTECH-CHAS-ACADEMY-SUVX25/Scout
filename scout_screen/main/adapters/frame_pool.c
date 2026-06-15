@@ -1,4 +1,4 @@
-#include "frame_buf.h"
+#include "frame_pool.h"
 #include "rc_protocol.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -6,7 +6,7 @@
 #include <assert.h>
 
 // Ping-pong frame buffer for the stream → render pipeline.
-// stream_run fills s_asm_buf one fragment at a time; frame_buf_publish swaps it with
+// stream_run fills s_asm_buf one fragment at a time; frame_pool_publish swaps it with
 // s_dec_buf so the render task can decode without stalling the receive loop.
 // If the decoder is still busy when a new frame arrives, the new frame is dropped.
 
@@ -19,7 +19,7 @@ static bool              s_decoding;
 static SemaphoreHandle_t s_frame_mutex;
 
 
-void frame_buf_init(void)
+void frame_pool_init(void)
 {
     s_asm_buf     = heap_caps_malloc(FRAME_MAX,  MALLOC_CAP_SPIRAM);
     s_dec_buf     = heap_caps_malloc(FRAME_MAX,  MALLOC_CAP_SPIRAM);
@@ -28,10 +28,10 @@ void frame_buf_init(void)
     assert(s_asm_buf && s_dec_buf && s_pkt && s_frame_mutex);
 }
 
-uint8_t *frame_buf_asm(void) { return s_asm_buf; }
-uint8_t *frame_buf_pkt(void) { return s_pkt;     }
+uint8_t *frame_pool_asm(void) { return s_asm_buf; }
+uint8_t *frame_pool_pkt(void) { return s_pkt;     }
 
-void frame_buf_publish(uint32_t len)
+void frame_pool_publish(uint32_t len)
 {
     xSemaphoreTake(s_frame_mutex, portMAX_DELAY);
     if(!s_decoding) {
@@ -44,7 +44,7 @@ void frame_buf_publish(uint32_t len)
     xSemaphoreGive(s_frame_mutex);
 }
 
-bool frame_buf_try_acquire(const uint8_t **src, uint32_t *len)
+bool frame_pool_try_acquire(const uint8_t **src, uint32_t *len)
 {
     if(xSemaphoreTake(s_frame_mutex, 0) != pdTRUE) return false;
     if(!s_new_frame) { xSemaphoreGive(s_frame_mutex); return false; }
@@ -57,7 +57,7 @@ bool frame_buf_try_acquire(const uint8_t **src, uint32_t *len)
     return true;
 }
 
-void frame_buf_release(void)
+void frame_pool_release(void)
 {
     xSemaphoreTake(s_frame_mutex, portMAX_DELAY);
     s_decoding = false;
