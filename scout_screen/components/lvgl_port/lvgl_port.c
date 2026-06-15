@@ -93,12 +93,12 @@ void lvgl_port_init(void)
     lv_init();
 
     lv_color_t *lvgl_buf = heap_caps_malloc(
-        SCREEN_W * 20 * sizeof(lv_color_t),
+        SCREEN_W * 120 * sizeof(lv_color_t),
         MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     assert(lvgl_buf);
 
     static lv_disp_draw_buf_t draw_buf;
-    lv_disp_draw_buf_init(&draw_buf, lvgl_buf, NULL, SCREEN_W * 20);
+    lv_disp_draw_buf_init(&draw_buf, lvgl_buf, NULL, SCREEN_W * 120);
 
     static lv_disp_drv_t disp_drv;
     lv_disp_drv_init(&disp_drv);

@@ -1,6 +1,7 @@
 #include "frame_buf.h"
 #include "rc_protocol.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "esp_heap_caps.h"
 #include <assert.h>
@@ -17,6 +18,7 @@ static uint32_t          s_dec_len;
 static bool              s_new_frame;
 static bool              s_decoding;
 static SemaphoreHandle_t s_frame_mutex;
+static TaskHandle_t      s_render_task;
 
 
 void frame_buf_init(void)
@@ -31,8 +33,11 @@ void frame_buf_init(void)
 uint8_t *frame_buf_asm(void) { return s_asm_buf; }
 uint8_t *frame_buf_pkt(void) { return s_pkt;     }
 
+void frame_buf_set_render_task(TaskHandle_t task) { s_render_task = task; }
+
 void frame_buf_publish(uint32_t len)
 {
+    bool published = false;
     xSemaphoreTake(s_frame_mutex, portMAX_DELAY);
     if(!s_decoding) {
         uint8_t *tmp = s_dec_buf;
@@ -40,8 +45,11 @@ void frame_buf_publish(uint32_t len)
         s_asm_buf    = tmp;
         s_dec_len    = len;
         s_new_frame  = true;
+        published    = true;
     }
     xSemaphoreGive(s_frame_mutex);
+    if(published && s_render_task)
+        xTaskNotify(s_render_task, 0, eNoAction);
 }
 
 bool frame_buf_try_acquire(const uint8_t **src, uint32_t *len)

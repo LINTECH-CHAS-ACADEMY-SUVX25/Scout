@@ -2,9 +2,14 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 // Allocates PSRAM ping-pong buffers and packet receive buffer; creates the frame mutex.
 void     frame_buf_init(void);
+
+// Registers the render task to be notified via xTaskNotify when a frame is published.
+void     frame_buf_set_render_task(TaskHandle_t task);
 
 // Returns a pointer to the assembly buffer for stream_run to write fragments into.
 uint8_t *frame_buf_asm(void);

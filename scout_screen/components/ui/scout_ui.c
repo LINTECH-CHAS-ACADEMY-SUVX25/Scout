@@ -132,6 +132,7 @@ LV_FONT_DECLARE(press_start_2p_96);
 
 static volatile int16_t s_joy_x;
 static volatile int16_t s_joy_y;
+static uint8_t          s_last_cmd = 0xFF;
 
 // Widget handles
 
@@ -360,6 +361,9 @@ static lv_obj_t *make_tele_row(lv_obj_t *parent, const char *key,
 
 static void update_cmd_badges(uint8_t cmd)
 {
+    if(cmd == s_last_cmd) return;
+    s_last_cmd = cmd;
+
     static const uint8_t masks[5] = {
         CMD_FORWARD, CMD_BACKWARD, 0xFF, CMD_LEFT, CMD_RIGHT
     };
@@ -656,6 +660,7 @@ static void make_cmd_badges(lv_obj_t *joy_panel)
         s_cmd_badges[i] = badge;
         badge_x += BADGE_STEP;
     }
+    s_last_cmd = 0xFF;  // fresh widgets need a full paint regardless of prior state
     update_cmd_badges(CMD_STOP);
 }
 

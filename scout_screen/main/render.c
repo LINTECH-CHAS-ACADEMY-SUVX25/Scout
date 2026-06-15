@@ -39,7 +39,9 @@ void render_init(void)
     jpeg_init_canvas(CAM_W, CAM_H);
     screen_state_render_tick_init(&s_tick);
     lvgl_port_set_video_region(CAM_X, CAM_Y, CAM_W, CAM_H);
-    xTaskCreatePinnedToCore(render_run, "render", 8192, NULL, 4, NULL, 1);
+    TaskHandle_t handle;
+    xTaskCreatePinnedToCore(render_run, "render", 8192, NULL, 4, &handle, 1);
+    frame_buf_set_render_task(handle);
     ESP_LOGI(TAG, "canvas %dx%d allocated", CAM_W, CAM_H);
 }
 
@@ -91,6 +93,6 @@ static void render_run(void *arg)
             }
         }
 
-        vTaskDelay(streaming ? 1 : pdMS_TO_TICKS(20));
+        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(20));
     }
 }
