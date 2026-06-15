@@ -65,7 +65,7 @@ shared_components/       rc_protocol, udp, jpeg, watchdog
 test/                    Host-side unit tests (C++)
 tests/                   Integration tests (Python)
 docs/
-  diagrams/              Sequence diagrams
+  diagrams/              Architecture, state, program flow and sequence diagrams
   uart/                  UART diagnostic interface reference
   changelogs/            Per-branch changelogs
   scout_cam_flow.md      Vehicle architecture and task dependency graph
