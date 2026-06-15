@@ -96,6 +96,6 @@ static void render_run(void *arg)
             }
         }
 
-        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(20));
+        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(10));
     }
 }
