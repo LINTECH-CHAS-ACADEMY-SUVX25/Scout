@@ -108,6 +108,44 @@ Pure renames — no logic changes.
 - `CMakeLists.txt`: added `adapters/screen_stats.c` to SRCS.
 - Verified: scout_screen builds.
 
+## Task 10 — cam_state SRP audit + camera control protocol
+
+### Dead code cleanup
+
+- Removed `camera_fault` field from `cam_status_t` — it was set in `cam_state_camera_start`
+  then immediately clobbered by `esp_restart()`, so it was never observed. The "running degraded"
+  log and the `if(cam_status.camera_fault)` branch in `stream_run` were also dead and removed.
+- Reboot on repeated camera init failure is intentional and unchanged.
+
+### RC receive extracted to `rc_rx` adapter
+
+- New `scout_cam/main/adapters/rc_rx.{c,h}`. Single responsibility: drain `joy_pkt_t` from
+  CMD_PORT, forward each to `motor_queue_send`, update `cam_status.screen_online` /
+  `cam_status.streaming`, and count silent frames to detect screen disconnect.
+  Mirrors the `rc_tx` adapter on the screen side.
+- `cam_state_process_cmds` deleted. The RC-receive block in `cam_state_try_resume` removed;
+  that function now only checks WiFi reconnect and takes no socket argument.
+- `stream.c` calls `rc_rx_process(sock)` everywhere `cam_state_process_cmds(sock)` was called.
+
+### Camera control protocol
+
+- `rc_protocol.h`: added `CTRL_PORT 3337`, `cam_ctrl_cmd_t` enum (CAMERA_ON/OFF, SENSOR_ON/OFF,
+  SET_QUALITY/BRIGHTNESS/CONTRAST/SATURATION/HMIRROR/VFLIP/SPECIAL_EFFECT), and
+  `cam_ctrl_pkt_t` (2 bytes: cmd + value).
+- `cam_status_t`: added `camera_enabled` (false skips capture and video TX) and
+  `sensor_enabled` (false skips BME280 reads and sensor fields in the diag packet).
+- `cam_state_init()` sets both flags to true; called from `main.c` before
+  `cam_state_camera_start()`.
+- `cam_state_apply_ctrl(pkt)` dispatches ON/OFF commands to the status flags and SET_* commands
+  to the new `camera_apply_setting()` in the camera adapter.
+- `camera.c`: new `camera_apply_setting(cmd, value)` applies a single OV2640 sensor setting via
+  `esp_camera_sensor_get()`.
+- `stream.c`: opens `ctrl_sock = udp_open(CTRL_PORT)` inline; polls it with `udp_try_recv`
+  each loop iteration and calls `cam_state_apply_ctrl` on a full packet — same pattern as
+  `diag_sock` on the screen side.
+- `CMakeLists.txt`: added `adapters/rc_rx.c` to SRCS.
+- Verified: scout_cam builds and flashed successfully.
+
 ## Step 7 — fold `telemetry.{c,h}` into `stream_run` (scout_cam)
 
 - Deleted `scout_cam/main/telemetry.c` and `scout_cam/main/telemetry.h`.

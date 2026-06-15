@@ -1,5 +1,6 @@
 #include "stream.h"
 #include "cam_state.h"
+#include "rc_rx.h"
 #include "frag_tx.h"
 #include "camera.h"
 #include "motor_queue.h"
@@ -15,7 +16,7 @@
 #include <math.h>
 
 // Task — captures JPEG frames from the camera and streams them to the dashboard via UDP.
-// Also drains inbound CMD bytes from the dashboard and forwards them to the motor task.
+// Also drains inbound RC commands from the dashboard and forwards them to the motor task.
 // Exists because camera capture and UDP I/O both block and must run together.
 
 static const char *TAG = "stream";
@@ -25,6 +26,7 @@ static void stream_run(void *arg);
 void stream_init(void)
 {
     frag_tx_init(S3_IP, VID_PORT);
+    rc_rx_init();
     xTaskCreate(stream_run, "stream", 4096, NULL, 5, NULL);
     ESP_LOGI(TAG, "streaming to %s:%d, commands on :%d", S3_IP, VID_PORT, CMD_PORT);
 }
@@ -40,6 +42,9 @@ static void stream_run(void *arg)
         }
     }
     udp_set_send_timeout(sock, 1);
+
+    int ctrl_sock = udp_open(CTRL_PORT);
+    if(ctrl_sock < 0) ESP_LOGW(TAG, "failed to open CTRL socket — camera control unavailable");
 
     watchdog_register();
     uint16_t           seq          = 0;
@@ -59,7 +64,7 @@ static void stream_run(void *arg)
                 .uptime_s  = (uint32_t)(now_us / 1000000),
             };
             float t, h, p;
-            if(bme280_read(&t, &h, &p)) {
+            if(cam_status.sensor_enabled && bme280_read(&t, &h, &p)) {
                 pkt.temp_cdeg    = (int16_t)lroundf(t * 100.0f);
                 pkt.humidity_pct = (uint8_t)lroundf(h);
                 pkt.pressure_pa  = (uint32_t)lroundf(p);
@@ -68,15 +73,21 @@ static void stream_run(void *arg)
             last_diag_us = now_us;
         }
 
+        if(ctrl_sock >= 0) {
+            cam_ctrl_pkt_t cpkt;
+            if(udp_try_recv(ctrl_sock, &cpkt, sizeof(cpkt)) == (int)sizeof(cpkt))
+                cam_state_apply_ctrl(&cpkt);
+        }
+
         if(!cam_status.streaming) {
-            cam_state_try_resume(sock);
+            cam_state_try_resume();
+            rc_rx_process(sock);
             vTaskDelay(pdMS_TO_TICKS(50));
             continue;
         }
 
-        // Degraded mode (camera fault): no frames to send, but the RC link stays alive.
-        if(cam_status.camera_fault) {
-            cam_state_process_cmds(sock);
+        if(!cam_status.camera_enabled) {
+            rc_rx_process(sock);
             vTaskDelay(pdMS_TO_TICKS(20));
             continue;
         }
@@ -99,6 +110,6 @@ static void stream_run(void *arg)
 
         frag_tx(sock, buf, (uint32_t)len, seq++);
         camera_release();
-        cam_state_process_cmds(sock);
+        rc_rx_process(sock);
     }
 }

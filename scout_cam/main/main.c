@@ -21,6 +21,7 @@ void app_main(void)
     reset_info_log();
     watchdog_init(&wtd_cfg);
     wifi_connect();
+    cam_state_init();
     cam_state_camera_start();
     motor_init();
     bme280_init();
