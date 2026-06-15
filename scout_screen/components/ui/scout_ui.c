@@ -191,8 +191,7 @@ static const char *s_overlay_text;
 static lv_obj_t *s_theme_name_lbl;          // bottom bar active-theme name
 static lv_obj_t *s_theme_dots[THEME_COUNT]; // dropdown active markers, one per item
 
-static lv_obj_t *s_cam_cfg_panel;
-static lv_obj_t *s_bme_cfg_panel;
+static lv_obj_t *s_cfg_panel;     // CONFIG — full-height camera-control panel on the right
 static bool      s_config_open;
 
 // Telemetry readouts: each row pairs a value label with the formatter for its field.
@@ -653,65 +652,38 @@ static void themes_event(lv_event_t *e)
     }
 }
 
-// Config panel button dimensions
-#define CFG_BTN_H 24
-#define CFG_BTN_Y (PANEL_H - CFG_BTN_H - 12)
+// Config panel — full camera height, button pinned near the bottom.
+#define CFG_PANEL_H CAM_H
+#define CFG_BTN_H   24
+#define CFG_BTN_Y   (CFG_PANEL_H - CFG_BTN_H - 16)
 
-// Hides the panel passed as user_data (each APPLY button closes only its own panel).
-// Clears s_config_open once both panels are hidden.
+// APPLY closes the CONFIG panel.
 static void panel_close_event(lv_event_t *e)
 {
-    lv_obj_t *panel = lv_event_get_user_data(e);
-    lv_obj_add_flag(panel, LV_OBJ_FLAG_HIDDEN);
-    if(lv_obj_has_flag(s_cam_cfg_panel, LV_OBJ_FLAG_HIDDEN) &&
-       lv_obj_has_flag(s_bme_cfg_panel, LV_OBJ_FLAG_HIDDEN))
-        s_config_open = false;
+    (void)e;
+    lv_obj_add_flag(s_cfg_panel, LV_OBJ_FLAG_HIDDEN);
+    s_config_open = false;
 }
 
-// Toggles both config panels simultaneously; registered to the CONFIG topbar label.
+// Toggles the CONFIG panel; registered to the CONFIG topbar label.
 static void config_event(lv_event_t *e)
 {
     (void)e;
     s_config_open = !s_config_open;
     if(s_config_open) {
-        lv_obj_clear_flag(s_cam_cfg_panel, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(s_bme_cfg_panel, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_move_foreground(s_cam_cfg_panel);
-        lv_obj_move_foreground(s_bme_cfg_panel);
+        lv_obj_clear_flag(s_cfg_panel, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(s_cfg_panel);
     } else {
-        lv_obj_add_flag(s_cam_cfg_panel, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(s_bme_cfg_panel, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_cfg_panel, LV_OBJ_FLAG_HIDDEN);
     }
 }
 
-// Slider event callbacks — each receives the paired value label as user_data
-// and reformats it when the slider moves.
-
+// Slider value callback — receives the paired value label as user_data and
+// reprints it as a plain signed integer when the slider moves.
 static void slider_num_event(lv_event_t *e)
 {
     lv_obj_t *lbl = lv_event_get_user_data(e);
     lv_label_set_text_fmt(lbl, "%d", (int)lv_slider_get_value(lv_event_get_target(e)));
-}
-
-static void slider_interval_event(lv_event_t *e)
-{
-    lv_obj_t *lbl = lv_event_get_user_data(e);
-    lv_label_set_text_fmt(lbl, "%d S", (int)lv_slider_get_value(lv_event_get_target(e)));
-}
-
-static void slider_osample_event(lv_event_t *e)
-{
-    lv_obj_t *lbl = lv_event_get_user_data(e);
-    int v = (int)lv_slider_get_value(lv_event_get_target(e));
-    lv_label_set_text_fmt(lbl, "X%d", 1 << (v - 1));
-}
-
-static void slider_filter_event(lv_event_t *e)
-{
-    static const char * const coeff[] = { "OFF", "2", "4", "8", "16" };
-    lv_obj_t *lbl = lv_event_get_user_data(e);
-    int v = (int)lv_slider_get_value(lv_event_get_target(e));
-    lv_label_set_text(lbl, coeff[v < 5 ? v : 4]);
 }
 
 // Accent-bordered APPLY button pinned to the bottom of a config panel.
@@ -761,7 +733,25 @@ static void make_slider_row(lv_obj_t *panel, const char *key, const char *init_v
     lv_obj_add_event_cb(sl, val_cb, LV_EVENT_VALUE_CHANGED, v);
 }
 
-// Hairline separator between slider rows inside a config panel.
+// Config switch row: key label left, themed on/off switch right. The switch
+// reuses the slider part styles so it reads as the same instrument family.
+static lv_obj_t *make_switch_row(lv_obj_t *panel, const char *key, int32_t y, bool on)
+{
+    lv_obj_t *k = make_label(panel, key, &st_fg_mid, NULL);
+    lv_obj_set_style_text_letter_space(k, 2, 0);
+    lv_obj_set_pos(k, PAD, y);
+
+    lv_obj_t *sw = lv_switch_create(panel);
+    lv_obj_set_size(sw, 40, 20);
+    lv_obj_set_pos(sw, PAD + ROW_W - 40, y - 6);   // centre the switch on the label row
+    lv_obj_add_style(sw, &st_slider_main, LV_PART_MAIN);
+    lv_obj_add_style(sw, &st_slider_ind,  LV_PART_INDICATOR | LV_STATE_CHECKED);
+    lv_obj_add_style(sw, &st_slider_knob, LV_PART_KNOB);
+    if(on) lv_obj_add_state(sw, LV_STATE_CHECKED);
+    return sw;
+}
+
+// Hairline separator between rows inside a config panel.
 static void make_cfg_sep(lv_obj_t *panel, int32_t y)
 {
     lv_obj_t *s = make_obj(panel);
@@ -806,7 +796,7 @@ static void make_topbar(void)
     lv_obj_set_style_text_align(s_link_lbl, LV_TEXT_ALIGN_LEFT, 0);
     lv_obj_align(s_link_lbl, LV_ALIGN_CENTER, 18, 0);
 
-    // CONFIG opens the cam/bme280 config panels; sits left of THEMES
+    // CONFIG opens the camera-control panel; sits left of THEMES
     lv_obj_t *cfg_lbl = make_label(topbar, "CONFIG", &st_fg_mid, NULL);
     lv_obj_set_style_text_letter_space(cfg_lbl, 2, 0);
     lv_obj_align(cfg_lbl, LV_ALIGN_RIGHT_MID, -144, 0);
@@ -895,11 +885,11 @@ static void make_botbar(void)
     lv_obj_align(rtos_v, LV_ALIGN_RIGHT_MID, -14, 0);
 }
 
-// Telemetry panel — floating card in the top right corner, aligned with the
+// Telemetry panel — floating card in the top left corner, aligned with the
 // camera top edge. Holds the value rows in a raised inner card.
 static void make_tele_panel(void)
 {
-    lv_obj_t *tele_panel = make_panel(SCREEN_W - PANEL_GAP - SIDE_W,
+    lv_obj_t *tele_panel = make_panel(PANEL_GAP,
                                       CAM_Y,
                                       SIDE_W, PANEL_H);
 
@@ -1115,52 +1105,35 @@ static void make_cam_corners(void)
     make_cam_tick(CAM_X + CAM_W + CAM_GAP - 3, CAM_Y + CAM_H / 2 - 7, false);
 }
 
-// Config panels — CAM CFG in the upper-left corner, BME280 CFG in the lower-right.
-// Both are hidden by default and toggled together by the CONFIG topbar label.
-// Position mirrors the existing panels: CAM CFG opposite telemetry, BME280 CFG
-// opposite joystick.
-//
-// Rows reflect the actual live-tunable parameters in the firmware:
-//   CAM CFG  — jpeg_quality (camera.c, 0-63, 20=default), brightness and
-//               contrast (OV2640 sensor API, -2..+2)
-//   BME280 CFG — telemetry interval (telemetry.c, 1-10 s), oversampling
-//                (x1-x16), IIR filter coefficient (off/2/4/8/16)
-static void make_config_panels(void)
+// CONFIG panel — a single card filling the right side, hidden until the CONFIG
+// topbar label is tapped. Holds the camera controls; rows map 1:1 to the
+// camera-control commands the cam node accepts (cam_ctrl_cmd_t):
+//   CAMERA     on/off switch        — CAM_CTRL_CAMERA_ON (0x01) / _OFF (0x02)
+//   QUALITY    slider 0-63, def 20  — CAM_CTRL_SET_QUALITY    (0x10, lower = better JPEG)
+//   BRIGHT     slider -2..2, def 0  — CAM_CTRL_SET_BRIGHTNESS (0x11)
+//   CONTRAST   slider -2..2, def 0  — CAM_CTRL_SET_CONTRAST   (0x12)
+//   SATURATION slider -2..2, def 0  — CAM_CTRL_SET_SATURATION (0x13)
+// The controls are presentational for now; wire each to its command over
+// CMD_PORT once the camera-control transport lands.
+static void make_config_panel(void)
 {
-    // Slider row layout (within PANEL_H=236):
-    //   section header rule ends at y=30
-    //   row 0 label  y=52, slider y=66  (track h=6, bottom=72)
-    //   sep           y=82
-    //   row 1 label  y=90, slider y=104 (bottom=110)
-    //   sep           y=120
-    //   row 2 label  y=128, slider y=142 (bottom=148)
-    //   APPLY         y=CFG_BTN_Y=200
-    s_cam_cfg_panel = make_panel(PANEL_GAP, CAM_Y, SIDE_W, PANEL_H);
-    lv_obj_add_flag(s_cam_cfg_panel, LV_OBJ_FLAG_HIDDEN);
-    make_section_hdr(s_cam_cfg_panel, "CAM CFG", HDR_Y);
-    make_slider_row(s_cam_cfg_panel, "QUALITY",  "20",  0,  63, 20,  52, slider_num_event);
-    make_cfg_sep(s_cam_cfg_panel, 82);
-    make_slider_row(s_cam_cfg_panel, "BRIGHT",   " 0", -2,   2,  0,  90, slider_num_event);
-    make_cfg_sep(s_cam_cfg_panel, 120);
-    make_slider_row(s_cam_cfg_panel, "CONTRAST", " 0", -2,   2,  0, 128, slider_num_event);
-    make_apply_btn(s_cam_cfg_panel);
+    s_cfg_panel = make_panel(SCREEN_W - PANEL_GAP - SIDE_W, CAM_Y, SIDE_W, CFG_PANEL_H);
+    lv_obj_add_flag(s_cfg_panel, LV_OBJ_FLAG_HIDDEN);
 
-    s_bme_cfg_panel = make_panel(SCREEN_W - PANEL_GAP - SIDE_W,
-                                  CAM_Y + CAM_H - PANEL_H,
-                                  SIDE_W, PANEL_H);
-    lv_obj_add_flag(s_bme_cfg_panel, LV_OBJ_FLAG_HIDDEN);
-    make_section_hdr(s_bme_cfg_panel, "BME280 CFG", HDR_Y);
-    make_slider_row(s_bme_cfg_panel, "INTERVAL", "2 S",  1,  10,  2,  52, slider_interval_event);
-    make_cfg_sep(s_bme_cfg_panel, 82);
-    make_slider_row(s_bme_cfg_panel, "OSAMPLE",  "X1",   1,   5,  1,  90, slider_osample_event);
-    make_cfg_sep(s_bme_cfg_panel, 120);
-    make_slider_row(s_bme_cfg_panel, "FILTER",   "OFF",  0,   4,  0, 128, slider_filter_event);
-    make_apply_btn(s_bme_cfg_panel);
+    make_section_hdr(s_cfg_panel, "CAM CONFIG", HDR_Y);
 
-    if(s_config_open) {
-        lv_obj_clear_flag(s_cam_cfg_panel, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(s_bme_cfg_panel, LV_OBJ_FLAG_HIDDEN);
-    }
+    make_switch_row(s_cfg_panel, "CAMERA", 68, true);
+    make_cfg_sep(s_cfg_panel, 116);
+    make_slider_row(s_cfg_panel, "QUALITY",    "20",  0, 63, 20, 148, slider_num_event);
+    make_cfg_sep(s_cfg_panel, 196);
+    make_slider_row(s_cfg_panel, "BRIGHT",     " 0", -2,  2,  0, 228, slider_num_event);
+    make_cfg_sep(s_cfg_panel, 276);
+    make_slider_row(s_cfg_panel, "CONTRAST",   " 0", -2,  2,  0, 308, slider_num_event);
+    make_cfg_sep(s_cfg_panel, 356);
+    make_slider_row(s_cfg_panel, "SATURATION", " 0", -2,  2,  0, 388, slider_num_event);
+    make_apply_btn(s_cfg_panel);
+
+    if(s_config_open) lv_obj_clear_flag(s_cfg_panel, LV_OBJ_FLAG_HIDDEN);
 }
 
 // Opaque cover over the camera region with a centred message. Hidden by default;
@@ -1204,7 +1177,7 @@ static void build_ui(void)
     make_cam_corners();
     make_scene_overlay();
     make_theme_menu();
-    make_config_panels();  // last so config panels layer above everything when open
+    make_config_panel();   // last so the config panel layers above everything when open
 }
 
 void scout_ui_init(void)
