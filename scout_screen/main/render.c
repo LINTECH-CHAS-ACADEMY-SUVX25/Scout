@@ -4,6 +4,7 @@
 #include "screen_stats.h"
 #include "scene.h"
 #include "rc_tx.h"
+#include "cfg_tx.h"
 #include "lvgl_port.h"
 #include "scout_ui.h"
 #include "display.h"
@@ -75,6 +76,7 @@ static void render_run(void *arg)
         int16_t jx, jy;
         scout_ui_get_joy(&jx, &jy);
         rc_tx_send_throttled(jx, jy);
+        cfg_tx_flush();
 
         // Only blit when a new frame was decoded. LVGL redraws just its dirty areas which don't overlap the camera region
         const uint8_t *src;

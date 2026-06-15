@@ -3,6 +3,7 @@
 #include "screen_state.h"
 #include "screen_stats.h"
 #include "rc_tx.h"
+#include "cfg_tx.h"
 #include "frag_rx.h"
 #include "udp.h"
 #include "wifi_ap.h"
@@ -25,6 +26,7 @@ void stream_init(void)
 {
     frame_pool_init();
     rc_tx_init();
+    cfg_tx_init();
     screen_stats_stream_tick_init(&s_tick);
     xTaskCreatePinnedToCore(stream_run, "udp_server", 4096, NULL, 5, NULL, 0);
 }
@@ -38,6 +40,7 @@ static void stream_run(void *arg)
     udp_set_rcvbuf(sock, MAX_FRAGS * PKT_MAX);
     udp_set_recv_timeout(sock, 1);
     rc_tx_bind(sock);
+    cfg_tx_bind(sock);
     ESP_LOGI(TAG, "UDP video server on port %d", VID_PORT);
 
     while(1) {
@@ -73,6 +76,7 @@ static void stream_run(void *arg)
         if(result == FRAG_DISCARD) continue;
 
         rc_tx_learn(&src);
+        cfg_tx_learn(&src);
         if(result == FRAG_COMPLETE) {
             s_tick.transfer.ms   = transfer_ms;
             s_tick.transfer.done = true;
