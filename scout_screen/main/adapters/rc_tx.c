@@ -1,4 +1,4 @@
-#include "cam_cmd.h"
+#include "rc_tx.h"
 #include "udp.h"
 #include "rc_protocol.h"
 #include "freertos/FreeRTOS.h"
@@ -11,24 +11,24 @@
 // The stream task learns the camera IP from incoming video packets and writes it here;
 // the render task reads it to send RC commands — hence the mutex.
 
-static const char *TAG = "cam_cmd";
+static const char *TAG = "rc_tx";
 
 static int                s_sock  = -1;
 static struct sockaddr_in s_addr;
 static bool               s_known = false;
 static SemaphoreHandle_t  s_mutex;
 
-void cam_cmd_init(void)
+void rc_tx_init(void)
 {
     s_mutex = xSemaphoreCreateMutex();
 }
 
-void cam_cmd_bind(int sock)
+void rc_tx_bind(int sock)
 {
     s_sock = sock;
 }
 
-void cam_cmd_learn(const struct sockaddr_in *src)
+void rc_tx_learn(const struct sockaddr_in *src)
 {
     xSemaphoreTake(s_mutex, portMAX_DELAY);
     if(!s_known) {
@@ -40,7 +40,7 @@ void cam_cmd_learn(const struct sockaddr_in *src)
     xSemaphoreGive(s_mutex);
 }
 
-void cam_cmd_send(int16_t x, int16_t y)
+void rc_tx_send(int16_t x, int16_t y)
 {
     xSemaphoreTake(s_mutex, portMAX_DELAY);
     bool               known = s_known;
@@ -52,7 +52,7 @@ void cam_cmd_send(int16_t x, int16_t y)
     udp_tx(s_sock, &addr, &pkt, sizeof(pkt));
 }
 
-void cam_cmd_send_throttled(int16_t x, int16_t y)
+void rc_tx_send_throttled(int16_t x, int16_t y)
 {
     static int16_t s_last_x  = 0, s_last_y = 0;
     static int64_t s_last_us = 0;
@@ -63,6 +63,6 @@ void cam_cmd_send_throttled(int16_t x, int16_t y)
         s_last_x  = x;
         s_last_y  = y;
         s_last_us = now_us;
-        cam_cmd_send(x, y);
+        rc_tx_send(x, y);
     }
 }

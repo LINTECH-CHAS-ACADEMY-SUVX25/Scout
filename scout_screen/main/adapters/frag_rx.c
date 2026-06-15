@@ -1,5 +1,5 @@
 #include "frag_rx.h"
-#include "frame_buf.h"
+#include "frame_pool.h"
 #include "rc_protocol.h"
 #include "esp_timer.h"
 #include "lwip/sockets.h"
@@ -60,7 +60,7 @@ frag_result_t frag_rx(const uint8_t *pkt, int pkt_len,
     }
 
     if((uint32_t)data_len > FRAME_MAX - offset) return FRAG_DISCARD;
-    memcpy(frame_buf_asm() + offset, data, data_len);
+    memcpy(frame_pool_asm() + offset, data, data_len);
     s_rx.rx_mask |= (1ULL << fi);
 
     if(s_rx.rx_mask != ((1ULL << s_rx.frags) - 1)) return FRAG_PARTIAL;

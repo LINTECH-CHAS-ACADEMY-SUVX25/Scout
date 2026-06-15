@@ -2,7 +2,6 @@
 #include "cam_state.h"
 #include "motor.h"
 #include "stream.h"
-#include "telemetry.h"
 #include "bme280.h"
 #include "watchdog.h"
 #include "reset_info.h"
@@ -22,10 +21,10 @@ void app_main(void)
     reset_info_log();
     watchdog_init(&wtd_cfg);
     wifi_connect();
+    cam_state_init();
     cam_state_camera_start();
     motor_init();
     bme280_init();
     stream_init();
-    telemetry_init();
     vTaskDelete(NULL);
 }

@@ -1,5 +1,5 @@
 #include "motor.h"
-#include "motor_cmd.h"
+#include "motor_queue.h"
 #include "l298n.h"
 #include "watchdog.h"
 #include "rc_protocol.h"
@@ -31,7 +31,7 @@ static void joy_to_motor(int16_t x, int16_t y, uint8_t *cmd, uint8_t *speed)
 void motor_init(void)
 {
     l298n_init();
-    motor_cmd_init();
+    motor_queue_init();
     xTaskCreate(motor_run, "motor", 2048, NULL, 6, NULL);
     ESP_LOGI(TAG, "motor ready");
 }
@@ -44,7 +44,7 @@ static void motor_run(void *arg)
 
     while(1) {
         int16_t x, y;
-        if(motor_cmd_recv(&x, &y, 500)) {
+        if(motor_queue_recv(&x, &y, 500)) {
             uint8_t cmd, speed;
             joy_to_motor(x, y, &cmd, &speed);
             l298n_apply(cmd, speed);

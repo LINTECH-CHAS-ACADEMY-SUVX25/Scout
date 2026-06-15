@@ -31,6 +31,28 @@ typedef struct __attribute__((packed)) {
 // Diagnostics port — cam sends cam_diag_pkt_t to screen every 2 s
 #define DIAG_PORT    3336
 
+// Control port — screen sends cam_ctrl_pkt_t to cam to configure the camera or toggle features
+#define CTRL_PORT    3337
+
+typedef enum __attribute__((packed)) {
+    CAM_CTRL_CAMERA_ON          = 0x01,
+    CAM_CTRL_CAMERA_OFF         = 0x02,
+    CAM_CTRL_SENSOR_ON          = 0x03,
+    CAM_CTRL_SENSOR_OFF         = 0x04,
+    CAM_CTRL_SET_QUALITY        = 0x10,  // 0-63 (lower = better JPEG)
+    CAM_CTRL_SET_BRIGHTNESS     = 0x11,  // -2..2
+    CAM_CTRL_SET_CONTRAST       = 0x12,  // -2..2
+    CAM_CTRL_SET_SATURATION     = 0x13,  // -2..2
+    CAM_CTRL_SET_HMIRROR        = 0x14,  // 0 or 1
+    CAM_CTRL_SET_VFLIP          = 0x15,  // 0 or 1
+    CAM_CTRL_SET_SPECIAL_EFFECT = 0x16,  // 0-6
+} cam_ctrl_cmd_t;
+
+typedef struct __attribute__((packed)) {
+    uint8_t cmd;   // cam_ctrl_cmd_t
+    int8_t  value; // used by SET_* commands; ignored for ON/OFF
+} cam_ctrl_pkt_t;
+
 // Diagnostics packet sent from scout_cam to scout_screen over DIAG_PORT.
 // Sensor fields (temp/humidity/pressure) are zero until BME280 is wired (#54).
 typedef struct __attribute__((packed)) {

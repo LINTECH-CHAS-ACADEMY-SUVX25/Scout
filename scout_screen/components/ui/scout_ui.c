@@ -1,10 +1,10 @@
 #include "scout_ui.h"
 #include "display.h"
 #include "rc_protocol.h"
-#include "cam_diag_fmt.h"
 #include "lvgl.h"
 #include <math.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <string.h>
 
 // Owns the full UI layout — widget creation, event callbacks, and the intro
@@ -160,6 +160,25 @@ static lv_obj_t *s_scene_overlay;       // covers the camera region; driven by s
 static lv_obj_t *s_scene_label;
 static const char *s_overlay_text;      // re-applied after a theme rebuild
 
+static void fmt_temp(char *out, size_t n, const cam_diag_pkt_t *d)
+{
+    int t     = d->temp_cdeg;
+    int whole = t / 100;
+    int frac  = (t < 0 ? -t : t) % 100 / 10;
+    const char *sign = (t < 0 && whole == 0) ? "-" : "";
+    snprintf(out, n, "%s%d.%d C", sign, whole, frac);
+}
+
+static void fmt_humi(char *out, size_t n, const cam_diag_pkt_t *d)
+{
+    snprintf(out, n, "%u %%", (unsigned)d->humidity_pct);
+}
+
+static void fmt_pres(char *out, size_t n, const cam_diag_pkt_t *d)
+{
+    snprintf(out, n, "%lu hPa", (unsigned long)(d->pressure_pa / 100));
+}
+
 // Telemetry readouts: each row pairs a value label with the formatter for its field.
 // last holds the text currently shown, so unchanged fields skip the LVGL repaint.
 typedef struct {
@@ -169,9 +188,9 @@ typedef struct {
 } tele_field_t;
 
 static tele_field_t s_tele[] = {
-    { &s_val_temp, cam_diag_fmt_temp, "" },
-    { &s_val_humi, cam_diag_fmt_humi, "" },
-    { &s_val_pres, cam_diag_fmt_pres, "" },
+    { &s_val_temp, fmt_temp, "" },
+    { &s_val_humi, fmt_humi, "" },
+    { &s_val_pres, fmt_pres, "" },
 };
 
 static cam_diag_pkt_t s_cam_diag;       // last packet, re-applied after a theme rebuild
