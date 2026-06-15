@@ -76,6 +76,17 @@ static void render_run(void *arg)
         int16_t jx, jy;
         scout_ui_get_joy(&jx, &jy);
         rc_tx_send_throttled(jx, jy);
+
+        if(scout_ui_cfg_dirty_take()) {
+            bool cam_on;
+            int8_t quality, brightness, contrast, saturation;
+            scout_ui_get_cam_cfg(&cam_on, &quality, &brightness, &contrast, &saturation);
+            cfg_tx_push(cam_on ? CAM_CTRL_CAMERA_ON : CAM_CTRL_CAMERA_OFF, 0);
+            cfg_tx_push(CAM_CTRL_SET_QUALITY,    quality);
+            cfg_tx_push(CAM_CTRL_SET_BRIGHTNESS, brightness);
+            cfg_tx_push(CAM_CTRL_SET_CONTRAST,   contrast);
+            cfg_tx_push(CAM_CTRL_SET_SATURATION, saturation);
+        }
         cfg_tx_flush();
 
         // Only blit when a new frame was decoded. LVGL redraws just its dirty areas which don't overlap the camera region

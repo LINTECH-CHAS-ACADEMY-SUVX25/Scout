@@ -34,3 +34,10 @@ void    scout_ui_set_theme(uint8_t idx);
 // Returns the current joystick position scaled to -255..255 per axis.
 // Positive x = right, positive y = forward (away from player).
 void scout_ui_get_joy(int16_t *x, int16_t *y);
+
+// Returns true (once) when the APPLY button was pressed since the last call.
+bool scout_ui_cfg_dirty_take(void);
+
+// Reads current config panel widget values. Only valid after scout_ui_init.
+void scout_ui_get_cam_cfg(bool *cam_on, int8_t *quality,
+                           int8_t *brightness, int8_t *contrast, int8_t *saturation);
