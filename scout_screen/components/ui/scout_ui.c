@@ -11,10 +11,16 @@
 // overlay. Compiled by both the scout_screen firmware and the PC simulator
 // (sim/), so it must stay free of ESP-IDF and FreeRTOS headers. The simulator
 // provides its own display.h with SCREEN_W/SCREEN_H.
+//
+// Appearance is driven by a small design system of shared lv_style_t objects
+// (see "Shared styles" below) rather than per-widget style calls. Switching
+// theme reloads the colours into those styles and asks LVGL to refresh — no
+// widget is destroyed or rebuilt.
 
 // Max knob offset from centre — base half (65) minus halo half (31), so
 // neither the knob nor its halo ever leaves the 130px joystick frame.
 #define JOY_RADIUS 34
+#define JOY_DEADZONE 15   // px from centre before a direction counts as pressed
 
 // Intro overlay loading bar — slim rounded track with a gradient fill.
 // The fill sits inside the track's 1px border + 2px padding (3px inset/side).
@@ -86,9 +92,13 @@
 #define CAM_GAP     8
 #define CAM_CORNER  22
 
+// Idle joystick knob — a fixed slate grey, identical across all themes.
+#define KNOB_IDLE   0x3A434F
+
 // Palette — dark tech / premium. One entry per selectable theme in the
-// THEMES dropdown; the COL_* macros below read from the active theme so the
-// widget builders stay palette-agnostic. Switching theme rebuilds the UI.
+// THEMES dropdown; the COL_* macros below read from the active theme. The
+// shared styles are (re)loaded from these colours, so the widget builders
+// stay palette-agnostic and a theme switch never rebuilds the UI.
 typedef struct {
     const char *name;
     uint32_t bg, bar, panel, line, accent, accent_deep;
@@ -151,10 +161,11 @@ static volatile int16_t s_joy_y;
 
 // Widget handles
 
-static lv_obj_t *s_root;          // holds the whole UI; deleted and rebuilt on theme switch
+static lv_obj_t *s_root;          // holds the whole UI; persists across theme switches
 static lv_obj_t *s_theme_menu;
 static uint8_t   s_pending_theme;
 static uint8_t   s_wifi_level;
+static uint8_t   s_cmd = CMD_STOP;     // last command, re-applied after a theme switch
 static lv_obj_t *s_intro_overlay;
 static lv_obj_t *s_intro_bar_fill;
 static lv_obj_t *s_intro_status;
@@ -170,12 +181,15 @@ static lv_obj_t *s_wifi_slash;
 static lv_obj_t *s_link_dot;
 static lv_obj_t *s_link_lbl;
 static lv_obj_t *s_cmd_badges[5];
+static lv_obj_t *s_cmd_badge_lbls[5];   // labels recolour with badge state; kept to avoid child lookups
 static lv_obj_t *s_val_temp;
 static lv_obj_t *s_val_humi;
 static lv_obj_t *s_val_pres;
 static lv_obj_t *s_scene_overlay;       // covers the camera region; driven by scout_ui_overlay()
 static lv_obj_t *s_scene_label;
-static const char *s_overlay_text;      // re-applied after a theme rebuild
+static const char *s_overlay_text;
+static lv_obj_t *s_theme_name_lbl;          // bottom bar active-theme name
+static lv_obj_t *s_theme_dots[THEME_COUNT]; // dropdown active markers, one per item
 
 static lv_obj_t *s_cam_cfg_panel;
 static lv_obj_t *s_bme_cfg_panel;
@@ -197,36 +211,53 @@ static tele_field_t s_tele[] = {
 
 static cam_diag_pkt_t s_cam_diag;       // last packet, re-applied after a theme rebuild
 
-// Widget helpers
+// ---------------------------------------------------------------------------
+// Shared styles — the design system
+//
+// Each role the UI repeats (a floating bar, a panel, a chip, a hairline, a
+// text colour, a slider part …) is a single lv_style_t shared by every widget
+// playing that role. styles_init() runs once and fixes the geometry that never
+// changes (radius, border widths, fonts, the crosshatch image); it is the
+// design vocabulary. styles_apply_theme() (re)loads every colour from the
+// active theme; it is the only thing a theme switch has to do to the styles.
+// ---------------------------------------------------------------------------
 
-static lv_obj_t *make_obj(lv_obj_t *parent)
-{
-    lv_obj_t *o = lv_obj_create(parent);
-    lv_obj_set_style_border_width(o, 0, 0);
-    lv_obj_set_style_pad_all(o, 0, 0);
-    lv_obj_set_style_radius(o, 0, 0);
-    lv_obj_set_style_bg_opa(o, LV_OPA_TRANSP, 0);
-    lv_obj_clear_flag(o, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
-    return o;
-}
-
-static lv_obj_t *make_label(lv_obj_t *parent, const char *text,
-                              lv_color_t color, const lv_font_t *font)
-{
-    lv_obj_t *l = lv_label_create(parent);
-    lv_label_set_text(l, text);
-    lv_obj_set_style_text_color(l, color, 0);
-    lv_obj_set_style_text_font(l, font, 0);
-    lv_obj_clear_flag(l, LV_OBJ_FLAG_CLICKABLE);
-    return l;
-}
+static lv_style_t st_reset;          // neutralises the default theme on plain containers
+static lv_style_t st_fill_bg;        // solid background-coloured fill
+static lv_style_t st_fill_line;      // hairline / separator fill
+static lv_style_t st_fill_accent;    // accent-coloured fill (marks, dots, swatch)
+static lv_style_t st_fill_textlo;    // text-low coloured fill (joystick ticks)
+static lv_style_t st_fill_texthi;    // text-high coloured fill (crosshair dot)
+static lv_style_t st_bar;            // floating top/bottom bar
+static lv_style_t st_panel;          // floating panel with crosshatch texture
+static lv_style_t st_card;           // raised inner card / dropdown body
+static lv_style_t st_chip;           // pill chip + command badge body
+static lv_style_t st_rule;           // section-header gradient rule
+static lv_style_t st_btn;            // APPLY button body
+static lv_style_t st_menu_item;      // theme dropdown row body
+static lv_style_t st_pressed;        // pressed-state fill for buttons / menu items
+static lv_style_t st_border_line;    // themed line-coloured border (width set locally)
+static lv_style_t st_border_accent;  // themed accent-coloured border (width set locally)
+static lv_style_t st_border_texthi;  // themed text-high border (crosshair ring)
+static lv_style_t st_fg_hi;          // text colour: high-emphasis
+static lv_style_t st_fg_mid;         // text colour: mid
+static lv_style_t st_fg_lo;          // text colour: low
+static lv_style_t st_fg_accent;      // text colour: accent
+static lv_style_t st_font_sm;        // small UI font
+static lv_style_t st_font_scene;     // scene-overlay font
+static lv_style_t st_font_logo;      // intro wordmark font
+static lv_style_t st_slider_main;    // slider track
+static lv_style_t st_slider_ind;     // slider indicator (accent gradient)
+static lv_style_t st_slider_knob;    // slider knob
+static bool       s_styles_ready;
 
 // Stripe tile pixel data — RGB565 + alpha, filled in by make_stripe_tile().
 static uint8_t      s_stripe_map[STRIPE_TILE * STRIPE_TILE * 3];
 static lv_img_dsc_t s_stripe_tile;
 
-// Builds the crosshatch tile at init: (x + y) wrapping inside STRIPE_W gives
-// the "/" diagonals, (x - y) the "\" ones; everything else stays transparent.
+// Builds the crosshatch tile: (x + y) wrapping inside STRIPE_W gives the "/"
+// diagonals, (x - y) the "\" ones; everything else stays transparent. The line
+// colour is baked into the pixels, so a theme switch re-bakes the tile.
 static void make_stripe_tile(void)
 {
     lv_color_t line = lv_color_hex(COL_LINE);
@@ -248,21 +279,178 @@ static void make_stripe_tile(void)
     s_stripe_tile.data               = s_stripe_map;
 }
 
-// Lays the stripe texture over a card background.
-static void add_stripes(lv_obj_t *card)
+// One-time geometry. Runs before any widget is built; never again.
+static void styles_init(void)
 {
-    lv_obj_set_style_bg_img_src(card, &s_stripe_tile, 0);
-    lv_obj_set_style_bg_img_tiled(card, true, 0);
+    if(s_styles_ready) return;
+    s_styles_ready = true;
+
+    // Plain container: strip the default theme's frame so the object is an
+    // invisible box until something layers a fill/border style on top.
+    lv_style_init(&st_reset);
+    lv_style_set_radius(&st_reset, 0);
+    lv_style_set_border_width(&st_reset, 0);
+    lv_style_set_pad_all(&st_reset, 0);
+    lv_style_set_bg_opa(&st_reset, LV_OPA_TRANSP);
+
+    // Solid fills — colour comes from the theme, opacity is fixed here.
+    lv_style_init(&st_fill_bg);     lv_style_set_bg_opa(&st_fill_bg, LV_OPA_COVER);
+    lv_style_init(&st_fill_line);   lv_style_set_bg_opa(&st_fill_line, LV_OPA_COVER);
+    lv_style_init(&st_fill_accent); lv_style_set_bg_opa(&st_fill_accent, LV_OPA_COVER);
+    lv_style_init(&st_fill_textlo); lv_style_set_bg_opa(&st_fill_textlo, LV_OPA_COVER);
+    lv_style_init(&st_fill_texthi); lv_style_set_bg_opa(&st_fill_texthi, LV_OPA_COVER);
+
+    lv_style_init(&st_bar);
+    lv_style_set_radius(&st_bar, 8);
+    lv_style_set_bg_opa(&st_bar, LV_OPA_COVER);
+    lv_style_set_border_width(&st_bar, 1);
+
+    lv_style_init(&st_panel);
+    lv_style_set_radius(&st_panel, 8);
+    lv_style_set_bg_opa(&st_panel, LV_OPA_COVER);
+    lv_style_set_border_width(&st_panel, 1);
+    lv_style_set_bg_img_src(&st_panel, &s_stripe_tile);
+    lv_style_set_bg_img_tiled(&st_panel, true);
+
+    lv_style_init(&st_card);
+    lv_style_set_radius(&st_card, 8);
+    lv_style_set_bg_opa(&st_card, LV_OPA_COVER);
+    lv_style_set_border_width(&st_card, 1);
+    lv_style_set_pad_all(&st_card, 0);
+
+    lv_style_init(&st_chip);
+    lv_style_set_radius(&st_chip, 10);
+    lv_style_set_bg_opa(&st_chip, LV_OPA_COVER);
+    lv_style_set_border_width(&st_chip, 1);
+    lv_style_set_pad_all(&st_chip, 0);
+
+    lv_style_init(&st_rule);
+    lv_style_set_bg_grad_dir(&st_rule, LV_GRAD_DIR_HOR);
+    lv_style_set_bg_opa(&st_rule, LV_OPA_60);
+
+    lv_style_init(&st_btn);
+    lv_style_set_radius(&st_btn, 6);
+    lv_style_set_bg_opa(&st_btn, LV_OPA_COVER);
+    lv_style_set_border_width(&st_btn, 1);
+    lv_style_set_pad_all(&st_btn, 0);
+
+    lv_style_init(&st_menu_item);
+    lv_style_set_radius(&st_menu_item, 6);
+    lv_style_set_border_width(&st_menu_item, 0);
+    lv_style_set_pad_all(&st_menu_item, 0);
+    lv_style_set_bg_opa(&st_menu_item, LV_OPA_TRANSP);
+
+    lv_style_init(&st_pressed);
+    lv_style_set_bg_opa(&st_pressed, LV_OPA_COVER);
+
+    lv_style_init(&st_border_line);   lv_style_set_border_opa(&st_border_line, LV_OPA_COVER);
+    lv_style_init(&st_border_accent); lv_style_set_border_opa(&st_border_accent, LV_OPA_COVER);
+    lv_style_init(&st_border_texthi); lv_style_set_border_opa(&st_border_texthi, LV_OPA_40);
+
+    lv_style_init(&st_fg_hi);
+    lv_style_init(&st_fg_mid);
+    lv_style_init(&st_fg_lo);
+    lv_style_init(&st_fg_accent);
+
+    lv_style_init(&st_font_sm);    lv_style_set_text_font(&st_font_sm, UI_FONT);
+    lv_style_init(&st_font_scene); lv_style_set_text_font(&st_font_scene, SCENE_FONT);
+    lv_style_init(&st_font_logo);  lv_style_set_text_font(&st_font_logo, LOGO_FONT);
+
+    lv_style_init(&st_slider_main);
+    lv_style_set_radius(&st_slider_main, LV_RADIUS_CIRCLE);
+    lv_style_set_bg_opa(&st_slider_main, LV_OPA_COVER);
+    lv_style_set_border_width(&st_slider_main, 0);
+    lv_style_set_pad_all(&st_slider_main, 0);
+
+    lv_style_init(&st_slider_ind);
+    lv_style_set_radius(&st_slider_ind, LV_RADIUS_CIRCLE);
+    lv_style_set_bg_grad_dir(&st_slider_ind, LV_GRAD_DIR_HOR);
+    lv_style_set_bg_opa(&st_slider_ind, LV_OPA_COVER);
+
+    lv_style_init(&st_slider_knob);
+    lv_style_set_radius(&st_slider_knob, LV_RADIUS_CIRCLE);
+    lv_style_set_bg_opa(&st_slider_knob, LV_OPA_COVER);
+    lv_style_set_pad_all(&st_slider_knob, 2);
+    lv_style_set_border_width(&st_slider_knob, 1);
+}
+
+// Loads every theme-dependent colour into the shared styles. Called at init and
+// on each theme switch; it never touches geometry.
+static void styles_apply_theme(void)
+{
+    lv_style_set_bg_color(&st_fill_bg,     lv_color_hex(COL_BG));
+    lv_style_set_bg_color(&st_fill_line,   lv_color_hex(COL_LINE));
+    lv_style_set_bg_color(&st_fill_accent, lv_color_hex(COL_ACCENT));
+    lv_style_set_bg_color(&st_fill_textlo, lv_color_hex(COL_TEXT_LO));
+    lv_style_set_bg_color(&st_fill_texthi, lv_color_hex(COL_TEXT_HI));
+
+    lv_style_set_bg_color(&st_bar,     lv_color_hex(COL_BAR));
+    lv_style_set_border_color(&st_bar, lv_color_hex(COL_LINE));
+
+    lv_style_set_bg_color(&st_panel,     lv_color_hex(COL_PANEL));
+    lv_style_set_border_color(&st_panel, lv_color_hex(COL_LINE));
+
+    lv_style_set_bg_color(&st_card,     lv_color_hex(COL_BAR));
+    lv_style_set_border_color(&st_card, lv_color_hex(COL_LINE));
+
+    lv_style_set_bg_color(&st_chip,     lv_color_hex(COL_BADGE_BG));
+    lv_style_set_border_color(&st_chip, lv_color_hex(COL_LINE));
+
+    lv_style_set_bg_color(&st_rule,      lv_color_hex(COL_ACCENT));
+    lv_style_set_bg_grad_color(&st_rule, lv_color_hex(COL_PANEL));
+
+    lv_style_set_bg_color(&st_btn,     lv_color_hex(COL_BADGE_BG));
+    lv_style_set_border_color(&st_btn, lv_color_hex(COL_ACCENT));
+
+    lv_style_set_bg_color(&st_pressed, lv_color_hex(COL_BADGE_ON));
+
+    lv_style_set_border_color(&st_border_line,   lv_color_hex(COL_LINE));
+    lv_style_set_border_color(&st_border_accent, lv_color_hex(COL_ACCENT));
+    lv_style_set_border_color(&st_border_texthi, lv_color_hex(COL_TEXT_HI));
+
+    lv_style_set_text_color(&st_fg_hi,     lv_color_hex(COL_TEXT_HI));
+    lv_style_set_text_color(&st_fg_mid,    lv_color_hex(COL_TEXT_MID));
+    lv_style_set_text_color(&st_fg_lo,     lv_color_hex(COL_TEXT_LO));
+    lv_style_set_text_color(&st_fg_accent, lv_color_hex(COL_ACCENT));
+
+    lv_style_set_bg_color(&st_slider_main,      lv_color_hex(COL_LINE));
+    lv_style_set_bg_color(&st_slider_ind,       lv_color_hex(COL_ACCENT_DEEP));
+    lv_style_set_bg_grad_color(&st_slider_ind,  lv_color_hex(COL_ACCENT));
+    lv_style_set_bg_color(&st_slider_knob,      lv_color_hex(COL_ACCENT));
+    lv_style_set_border_color(&st_slider_knob,  lv_color_hex(COL_PANEL));
+}
+
+// Widget helpers
+
+// Plain container: default theme stripped, not scrollable or clickable.
+static lv_obj_t *make_obj(lv_obj_t *parent)
+{
+    lv_obj_t *o = lv_obj_create(parent);
+    lv_obj_add_style(o, &st_reset, 0);
+    lv_obj_clear_flag(o, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+    return o;
+}
+
+// Label with a foreground-colour style (NULL for runtime-coloured labels) and
+// a font style (NULL defaults to the small UI font).
+static lv_obj_t *make_label(lv_obj_t *parent, const char *text,
+                            lv_style_t *fg, lv_style_t *font)
+{
+    lv_obj_t *l = lv_label_create(parent);
+    lv_label_set_text(l, text);
+    if(fg) lv_obj_add_style(l, fg, 0);
+    lv_obj_add_style(l, font ? font : &st_font_sm, 0);
+    lv_obj_clear_flag(l, LV_OBJ_FLAG_CLICKABLE);
+    return l;
 }
 
 // Thin vertical hairline used to separate groups in the top and bottom bars.
 static void make_vsep(lv_obj_t *parent, lv_align_t align, int32_t x)
 {
     lv_obj_t *s = make_obj(parent);
+    lv_obj_add_style(s, &st_fill_line, 0);
     lv_obj_set_size(s, 1, 12);
     lv_obj_align(s, align, x, 0);
-    lv_obj_set_style_bg_color(s, lv_color_hex(COL_LINE), 0);
-    lv_obj_set_style_bg_opa(s, LV_OPA_COVER, 0);
 }
 
 // One arc of the WiFi signal symbol — a 90° fan segment above the dot,
@@ -281,30 +469,28 @@ static lv_obj_t *make_wifi_arc(lv_obj_t *parent, int32_t d, int32_t cx, int32_t 
     return a;
 }
 
-// Accent corner bracket framing the camera area like a viewfinder.
-static void make_cam_corner(int32_t x, int32_t y, lv_border_side_t side)
+// Accent corner bracket: an L of two borders. Used by both the camera
+// viewfinder (parent = s_root) and the intro overlay.
+static lv_obj_t *make_corner(lv_obj_t *parent, int32_t x, int32_t y,
+                             int32_t size, lv_border_side_t side, lv_opa_t opa)
 {
-    lv_obj_t *c = make_obj(s_root);
-    lv_obj_set_size(c, CAM_CORNER, CAM_CORNER);
+    lv_obj_t *c = make_obj(parent);
+    lv_obj_add_style(c, &st_border_accent, 0);
+    lv_obj_set_size(c, size, size);
     lv_obj_set_pos(c, x, y);
     lv_obj_set_style_border_width(c, 2, 0);
-    lv_obj_set_style_border_color(c, lv_color_hex(COL_ACCENT), 0);
     lv_obj_set_style_border_side(c, side, 0);
-    lv_obj_set_style_border_opa(c, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_opa(c, opa, 0);
+    return c;
 }
 
 // Floating rounded panel — the shared card style for the corner widgets.
 static lv_obj_t *make_panel(int32_t x, int32_t y, int32_t w, int32_t h)
 {
     lv_obj_t *p = make_obj(s_root);
+    lv_obj_add_style(p, &st_panel, 0);
     lv_obj_set_size(p, w, h);
     lv_obj_set_pos(p, x, y);
-    lv_obj_set_style_radius(p, 8, 0);
-    lv_obj_set_style_bg_color(p, lv_color_hex(COL_PANEL), 0);
-    lv_obj_set_style_bg_opa(p, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(p, 1, 0);
-    lv_obj_set_style_border_color(p, lv_color_hex(COL_LINE), 0);
-    add_stripes(p);
     return p;
 }
 
@@ -314,65 +500,49 @@ static void make_section_hdr(lv_obj_t *parent, const char *text, int32_t y)
 {
     // y-3 centres the 14px mark on the 8px text's midline (y+4)
     lv_obj_t *mark = make_obj(parent);
+    lv_obj_add_style(mark, &st_fill_accent, 0);
     lv_obj_set_size(mark, 3, 14);
     lv_obj_set_pos(mark, PAD, y - 3);
     lv_obj_set_style_radius(mark, 1, 0);
-    lv_obj_set_style_bg_color(mark, lv_color_hex(COL_ACCENT), 0);
-    lv_obj_set_style_bg_opa(mark, LV_OPA_COVER, 0);
 
-    lv_obj_t *l = make_label(parent, text,
-        lv_color_hex(COL_TEXT_MID), UI_FONT);
+    lv_obj_t *l = make_label(parent, text, &st_fg_mid, NULL);
     lv_obj_set_style_text_letter_space(l, 2, 0);
     lv_obj_set_pos(l, PAD + 10, y);
 
     lv_obj_t *rule = make_obj(parent);
+    lv_obj_add_style(rule, &st_rule, 0);
     lv_obj_set_size(rule, ROW_W, 1);
     lv_obj_set_pos(rule, PAD, y + 18);
-    lv_obj_set_style_bg_color(rule, lv_color_hex(COL_ACCENT), 0);
-    lv_obj_set_style_bg_grad_color(rule, lv_color_hex(COL_PANEL), 0);
-    lv_obj_set_style_bg_grad_dir(rule, LV_GRAD_DIR_HOR, 0);
-    lv_obj_set_style_bg_opa(rule, LV_OPA_60, 0);
 }
 
 static lv_obj_t *create_joy_tick(lv_obj_t *parent, lv_align_t align,
                                    int32_t xo, int32_t yo, bool horiz)
 {
-    lv_obj_t *t = lv_obj_create(parent);
+    lv_obj_t *t = make_obj(parent);
+    lv_obj_add_style(t, &st_fill_textlo, 0);
     lv_obj_set_size(t, horiz ? 7 : 1, horiz ? 1 : 7);
     lv_obj_align(t, align, xo, yo);
-    lv_obj_set_style_bg_color(t, lv_color_hex(COL_TEXT_LO), 0);
-    lv_obj_set_style_bg_opa(t, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(t, 1, 0);
-    lv_obj_set_style_border_width(t, 0, 0);
-    lv_obj_clear_flag(t, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
     return t;
 }
 
 static lv_obj_t *make_tele_row(lv_obj_t *parent, const char *key,
-                                 const char *init_val, lv_color_t val_color,
-                                 int32_t y)
+                                 const char *init_val, int32_t y)
 {
     lv_obj_t *row = make_obj(parent);
     lv_obj_set_size(row, TELE_ROW_W, 22);
     lv_obj_set_pos(row, 0, y);
 
-    lv_obj_t *k = make_label(row, key,
-        lv_color_hex(COL_TEXT_MID), UI_FONT);
+    lv_obj_t *k = make_label(row, key, &st_fg_mid, NULL);
     lv_obj_align(k, LV_ALIGN_LEFT_MID, 0, 0);
 
     // Value sits in a raised chip so the readouts read as instruments
-    lv_obj_t *chip = lv_obj_create(row);
+    lv_obj_t *chip = make_obj(row);
+    lv_obj_add_style(chip, &st_chip, 0);
     lv_obj_set_size(chip, 84, 20);
     lv_obj_align(chip, LV_ALIGN_RIGHT_MID, 0, 0);
-    lv_obj_set_style_radius(chip, 10, 0);
-    lv_obj_set_style_bg_color(chip, lv_color_hex(COL_BADGE_BG), 0);
-    lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(chip, 1, 0);
-    lv_obj_set_style_border_color(chip, lv_color_hex(COL_LINE), 0);
-    lv_obj_set_style_pad_all(chip, 0, 0);
-    lv_obj_clear_flag(chip, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
 
-    lv_obj_t *v = make_label(chip, init_val, val_color, UI_FONT);
+    lv_obj_t *v = make_label(chip, init_val, &st_fg_accent, NULL);
     lv_obj_align(v, LV_ALIGN_RIGHT_MID, -8, 0);
     return v;
 }
@@ -384,18 +554,15 @@ static void update_cmd_badges(uint8_t cmd)
     static const uint8_t masks[5] = {
         CMD_FORWARD, CMD_BACKWARD, 0xFF, CMD_LEFT, CMD_RIGHT
     };
+    s_cmd = cmd;
     for(int i = 0; i < 5; i++) {
         bool active = (i == 2) ? (cmd == CMD_STOP) : (cmd & masks[i]);
         lv_obj_set_style_bg_color(s_cmd_badges[i],
             lv_color_hex(active ? COL_BADGE_ON : COL_BADGE_BG), 0);
         lv_obj_set_style_border_color(s_cmd_badges[i],
             lv_color_hex(active ? COL_ACCENT : COL_LINE), 0);
-
-        lv_obj_t *lbl = lv_obj_get_child(s_cmd_badges[i], 0);
-        if(lbl) {
-            lv_obj_set_style_text_color(lbl,
-                lv_color_hex(active ? COL_ACCENT : COL_TEXT_LO), 0);
-        }
+        lv_obj_set_style_text_color(s_cmd_badge_lbls[i],
+            lv_color_hex(active ? COL_ACCENT : COL_TEXT_LO), 0);
     }
 }
 
@@ -431,16 +598,16 @@ static void joy_event(lv_event_t *e)
         s_joy_y = -(int16_t)((dy * 255) / JOY_RADIUS);
 
         uint8_t cmd = CMD_STOP;
-        if(dy < -15) cmd |= CMD_FORWARD;
-        if(dy >  15) cmd |= CMD_BACKWARD;
-        if(dx < -15) cmd |= CMD_LEFT;
-        if(dx >  15) cmd |= CMD_RIGHT;
+        if(dy < -JOY_DEADZONE) cmd |= CMD_FORWARD;
+        if(dy >  JOY_DEADZONE) cmd |= CMD_BACKWARD;
+        if(dx < -JOY_DEADZONE) cmd |= CMD_LEFT;
+        if(dx >  JOY_DEADZONE) cmd |= CMD_RIGHT;
         update_cmd_badges(cmd);
     } else {
         lv_obj_align(s_knob, LV_ALIGN_CENTER, 0, 0);
         lv_obj_align(s_halo, LV_ALIGN_CENTER, 0, 0);
         lv_obj_set_style_transform_zoom(s_knob, 256, 0);
-        lv_obj_set_style_bg_color(s_knob, lv_color_hex(0x3A434F), 0);
+        lv_obj_set_style_bg_color(s_knob, lv_color_hex(KNOB_IDLE), 0);
         s_joy_x = 0;
         s_joy_y = 0;
         update_cmd_badges(CMD_STOP);
@@ -457,9 +624,9 @@ static void intro_close_cb(lv_timer_t *t)
     s_intro_overlay = NULL;
 }
 
-// Themes dropdown events — selecting a theme rebuilds the whole UI with the
-// new palette. The rebuild runs from a one-shot timer, never from the item's
-// own callback, since the rebuild deletes the object firing the event.
+// Themes dropdown events — selecting a theme recolours the shared styles. The
+// recolour runs from a one-shot timer, never from the item's own callback, to
+// keep it off the event path even though nothing is destroyed any more.
 
 static void theme_apply_cb(lv_timer_t *t)
 {
@@ -551,20 +718,14 @@ static void slider_filter_event(lv_event_t *e)
 static void make_apply_btn(lv_obj_t *panel)
 {
     lv_obj_t *btn = lv_obj_create(panel);
+    lv_obj_add_style(btn, &st_btn, 0);
+    lv_obj_add_style(btn, &st_pressed, LV_STATE_PRESSED);
     lv_obj_set_size(btn, ROW_W, CFG_BTN_H);
     lv_obj_set_pos(btn, PAD, CFG_BTN_Y);
-    lv_obj_set_style_radius(btn, 6, 0);
-    lv_obj_set_style_bg_color(btn, lv_color_hex(COL_BADGE_BG), 0);
-    lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(btn, 1, 0);
-    lv_obj_set_style_border_color(btn, lv_color_hex(COL_ACCENT), 0);
-    lv_obj_set_style_bg_color(btn, lv_color_hex(COL_BADGE_ON), LV_STATE_PRESSED);
-    lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, LV_STATE_PRESSED);
-    lv_obj_set_style_pad_all(btn, 0, 0);
     lv_obj_clear_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(btn, panel_close_event, LV_EVENT_CLICKED, panel);
 
-    lv_obj_t *lbl = make_label(btn, "APPLY", lv_color_hex(COL_ACCENT), UI_FONT);
+    lv_obj_t *lbl = make_label(btn, "APPLY", &st_fg_accent, NULL);
     lv_obj_set_style_text_letter_space(lbl, 4, 0);
     lv_obj_align(lbl, LV_ALIGN_CENTER, 0, 0);
 }
@@ -575,11 +736,11 @@ static void make_slider_row(lv_obj_t *panel, const char *key, const char *init_v
                              int32_t min, int32_t max, int32_t def,
                              int32_t y, lv_event_cb_t val_cb)
 {
-    lv_obj_t *k = make_label(panel, key, lv_color_hex(COL_TEXT_MID), UI_FONT);
+    lv_obj_t *k = make_label(panel, key, &st_fg_mid, NULL);
     lv_obj_set_style_text_letter_space(k, 2, 0);
     lv_obj_set_pos(k, PAD, y);
 
-    lv_obj_t *v = make_label(panel, init_val, lv_color_hex(COL_ACCENT), UI_FONT);
+    lv_obj_t *v = make_label(panel, init_val, &st_fg_accent, NULL);
     lv_obj_set_style_text_letter_space(v, 2, 0);
     lv_obj_set_width(v, 48);
     lv_obj_set_style_text_align(v, LV_TEXT_ALIGN_RIGHT, 0);
@@ -591,28 +752,11 @@ static void make_slider_row(lv_obj_t *panel, const char *key, const char *init_v
     lv_slider_set_range(sl, min, max);
     lv_slider_set_value(sl, def, LV_ANIM_OFF);
 
-    // Track — slim, pill-shaped, same colour as panel hairlines
-    lv_obj_set_style_bg_color(sl, lv_color_hex(COL_LINE), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(sl, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_radius(sl, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-    lv_obj_set_style_border_width(sl, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(sl, 0, LV_PART_MAIN);
-
-    // Indicator — accent gradient, left-to-right
-    lv_obj_set_style_bg_color(sl, lv_color_hex(COL_ACCENT_DEEP), LV_PART_INDICATOR);
-    lv_obj_set_style_bg_grad_color(sl, lv_color_hex(COL_ACCENT), LV_PART_INDICATOR);
-    lv_obj_set_style_bg_grad_dir(sl, LV_GRAD_DIR_HOR, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_opa(sl, LV_OPA_COVER, LV_PART_INDICATOR);
-    lv_obj_set_style_radius(sl, LV_RADIUS_CIRCLE, LV_PART_INDICATOR);
-
-    // Knob — 8px circle (track 4px + pad 2 each side), panel-coloured ring
-    // gives the "floating dot" look without bulk
-    lv_obj_set_style_bg_color(sl, lv_color_hex(COL_ACCENT), LV_PART_KNOB);
-    lv_obj_set_style_bg_opa(sl, LV_OPA_COVER, LV_PART_KNOB);
-    lv_obj_set_style_radius(sl, LV_RADIUS_CIRCLE, LV_PART_KNOB);
-    lv_obj_set_style_pad_all(sl, 2, LV_PART_KNOB);
-    lv_obj_set_style_border_color(sl, lv_color_hex(COL_PANEL), LV_PART_KNOB);
-    lv_obj_set_style_border_width(sl, 1, LV_PART_KNOB);
+    // Track / indicator / knob each get their shared part style. The knob's
+    // panel-coloured ring gives the "floating dot" look without bulk.
+    lv_obj_add_style(sl, &st_slider_main, LV_PART_MAIN);
+    lv_obj_add_style(sl, &st_slider_ind,  LV_PART_INDICATOR);
+    lv_obj_add_style(sl, &st_slider_knob, LV_PART_KNOB);
 
     lv_obj_add_event_cb(sl, val_cb, LV_EVENT_VALUE_CHANGED, v);
 }
@@ -621,10 +765,9 @@ static void make_slider_row(lv_obj_t *panel, const char *key, const char *init_v
 static void make_cfg_sep(lv_obj_t *panel, int32_t y)
 {
     lv_obj_t *s = make_obj(panel);
+    lv_obj_add_style(s, &st_fill_line, 0);
     lv_obj_set_size(s, ROW_W, 1);
     lv_obj_set_pos(s, PAD, y);
-    lv_obj_set_style_bg_color(s, lv_color_hex(COL_LINE), 0);
-    lv_obj_set_style_bg_opa(s, LV_OPA_COVER, 0);
 }
 
 // UI assembly — one builder per visible module, called from scout_ui_init
@@ -633,27 +776,22 @@ static void make_cfg_sep(lv_obj_t *panel, int32_t y)
 static void make_topbar(void)
 {
     lv_obj_t *topbar = make_obj(s_root);
+    lv_obj_add_style(topbar, &st_bar, 0);
     lv_obj_set_size(topbar, SCREEN_W - 2 * PANEL_GAP, BAR_H);
     lv_obj_align(topbar, LV_ALIGN_TOP_MID, 0, PANEL_GAP);
-    lv_obj_set_style_radius(topbar, 8, 0);
-    lv_obj_set_style_bg_color(topbar, lv_color_hex(COL_BAR), 0);
-    lv_obj_set_style_bg_opa(topbar, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(topbar, 1, 0);
-    lv_obj_set_style_border_color(topbar, lv_color_hex(COL_LINE), 0);
 
-    lv_obj_t *logo = make_label(topbar, "SCOUT",
-        lv_color_hex(COL_ACCENT), UI_FONT);
+    lv_obj_t *logo = make_label(topbar, "SCOUT", &st_fg_accent, NULL);
     lv_obj_set_style_text_letter_space(logo, 6, 0);
     lv_obj_align(logo, LV_ALIGN_LEFT_MID, 14, 0);
 
     make_vsep(topbar, LV_ALIGN_LEFT_MID, 100);
 
-    lv_obj_t *tagline = make_label(topbar, "LINTECH",
-        lv_color_hex(COL_TEXT_LO), UI_FONT);
+    lv_obj_t *tagline = make_label(topbar, "LINTECH", &st_fg_lo, NULL);
     lv_obj_set_style_text_letter_space(tagline, 2, 0);
     lv_obj_align(tagline, LV_ALIGN_LEFT_MID, 116, 0);
 
-    // Link status in the centre — dot + label driven by scout_ui_update()
+    // Link status in the centre — dot + label driven by scout_ui_update().
+    // Both are coloured at runtime, so they carry no foreground style.
     s_link_dot = make_obj(topbar);
     lv_obj_set_size(s_link_dot, 6, 6);
     lv_obj_align(s_link_dot, LV_ALIGN_CENTER, -36, 0);
@@ -661,16 +799,15 @@ static void make_topbar(void)
     lv_obj_set_style_bg_color(s_link_dot, lv_color_hex(COL_BAD), 0);
     lv_obj_set_style_bg_opa(s_link_dot, LV_OPA_COVER, 0);
 
-    s_link_lbl = make_label(topbar, "NO LINK",
-        lv_color_hex(COL_TEXT_LO), UI_FONT);
+    s_link_lbl = make_label(topbar, "NO LINK", NULL, NULL);
+    lv_obj_set_style_text_color(s_link_lbl, lv_color_hex(COL_TEXT_LO), 0);
     lv_obj_set_style_text_letter_space(s_link_lbl, 2, 0);
     lv_obj_set_width(s_link_lbl, 80);
     lv_obj_set_style_text_align(s_link_lbl, LV_TEXT_ALIGN_LEFT, 0);
     lv_obj_align(s_link_lbl, LV_ALIGN_CENTER, 18, 0);
 
     // CONFIG opens the cam/bme280 config panels; sits left of THEMES
-    lv_obj_t *cfg_lbl = make_label(topbar, "CONFIG",
-        lv_color_hex(COL_TEXT_MID), UI_FONT);
+    lv_obj_t *cfg_lbl = make_label(topbar, "CONFIG", &st_fg_mid, NULL);
     lv_obj_set_style_text_letter_space(cfg_lbl, 2, 0);
     lv_obj_align(cfg_lbl, LV_ALIGN_RIGHT_MID, -144, 0);
     lv_obj_add_flag(cfg_lbl, LV_OBJ_FLAG_CLICKABLE);
@@ -680,8 +817,7 @@ static void make_topbar(void)
     make_vsep(topbar, LV_ALIGN_RIGHT_MID, -130);
 
     // THEMES opens the theme dropdown — sits left of the separator
-    lv_obj_t *themes = make_label(topbar, "THEMES",
-        lv_color_hex(COL_TEXT_MID), UI_FONT);
+    lv_obj_t *themes = make_label(topbar, "THEMES", &st_fg_mid, NULL);
     lv_obj_set_style_text_letter_space(themes, 2, 0);
     lv_obj_align(themes, LV_ALIGN_RIGHT_MID, -66, 0);
     lv_obj_add_flag(themes, LV_OBJ_FLAG_CLICKABLE);
@@ -720,51 +856,42 @@ static void make_topbar(void)
 static void make_botbar(void)
 {
     lv_obj_t *botbar = make_obj(s_root);
+    lv_obj_add_style(botbar, &st_bar, 0);
     lv_obj_set_size(botbar, SCREEN_W - 2 * PANEL_GAP, BAR_H);
     lv_obj_align(botbar, LV_ALIGN_BOTTOM_MID, 0, -PANEL_GAP);
-    lv_obj_set_style_radius(botbar, 8, 0);
-    lv_obj_set_style_bg_color(botbar, lv_color_hex(COL_BAR), 0);
-    lv_obj_set_style_bg_opa(botbar, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(botbar, 1, 0);
-    lv_obj_set_style_border_color(botbar, lv_color_hex(COL_LINE), 0);
 
     const char *bot_keys[] = { "IP", "UDP" };
     const char *bot_vals[] = { S3_IP, XSTR(VID_PORT) };
     const int32_t key_w[]  = { 24, 38 };
     int32_t bot_x = 14;
     for(int i = 0; i < 2; i++) {
-        lv_obj_t *k = make_label(botbar, bot_keys[i],
-            lv_color_hex(COL_TEXT_LO), UI_FONT);
+        lv_obj_t *k = make_label(botbar, bot_keys[i], &st_fg_lo, NULL);
         lv_obj_align(k, LV_ALIGN_LEFT_MID, bot_x, 0);
         bot_x += key_w[i];
-        lv_obj_t *v = make_label(botbar, bot_vals[i],
-            lv_color_hex(COL_TEXT_MID), UI_FONT);
+        lv_obj_t *v = make_label(botbar, bot_vals[i], &st_fg_mid, NULL);
         lv_obj_align(v, LV_ALIGN_LEFT_MID, bot_x, 0);
         bot_x += (i == 0) ? 110 : 50;
     }
     make_vsep(botbar, LV_ALIGN_LEFT_MID, 140);
     make_vsep(botbar, LV_ALIGN_LEFT_MID, 246);
 
-    // Active theme — accent swatch + name, rebuilt with the UI on switch
+    // Active theme — accent swatch + name. The swatch tracks the accent via
+    // st_fill_accent; the name text is updated by scout_ui_set_theme().
     lv_obj_t *swatch = make_obj(botbar);
+    lv_obj_add_style(swatch, &st_fill_accent, 0);
     lv_obj_set_size(swatch, 8, 8);
     lv_obj_align(swatch, LV_ALIGN_LEFT_MID, 264, 0);
     lv_obj_set_style_radius(swatch, 2, 0);
-    lv_obj_set_style_bg_color(swatch, lv_color_hex(COL_ACCENT), 0);
-    lv_obj_set_style_bg_opa(swatch, LV_OPA_COVER, 0);
 
-    lv_obj_t *theme_name = make_label(botbar, s_th->name,
-        lv_color_hex(COL_TEXT_MID), UI_FONT);
-    lv_obj_set_style_text_letter_space(theme_name, 2, 0);
-    lv_obj_align(theme_name, LV_ALIGN_LEFT_MID, 280, 0);
+    s_theme_name_lbl = make_label(botbar, s_th->name, &st_fg_mid, NULL);
+    lv_obj_set_style_text_letter_space(s_theme_name_lbl, 2, 0);
+    lv_obj_align(s_theme_name_lbl, LV_ALIGN_LEFT_MID, 280, 0);
 
     make_vsep(botbar, LV_ALIGN_RIGHT_MID, -165);
 
-    lv_obj_t *rtos_k = make_label(botbar, "RTOS",
-        lv_color_hex(COL_TEXT_LO), UI_FONT);
+    lv_obj_t *rtos_k = make_label(botbar, "RTOS", &st_fg_lo, NULL);
     lv_obj_align(rtos_k, LV_ALIGN_RIGHT_MID, -120, 0);
-    lv_obj_t *rtos_v = make_label(botbar, "FREERTOS",
-        lv_color_hex(COL_ACCENT), UI_FONT);
+    lv_obj_t *rtos_v = make_label(botbar, "FREERTOS", &st_fg_accent, NULL);
     lv_obj_align(rtos_v, LV_ALIGN_RIGHT_MID, -14, 0);
 }
 
@@ -779,31 +906,24 @@ static void make_tele_panel(void)
     make_section_hdr(tele_panel, "TELEMETRI", HDR_Y);
 
     // Raised card around the telemetry rows
-    lv_obj_t *tele_card = lv_obj_create(tele_panel);
+    lv_obj_t *tele_card = make_obj(tele_panel);
+    lv_obj_add_style(tele_card, &st_card, 0);
     lv_obj_set_size(tele_card, ROW_W, TELE_CARD_H);
     lv_obj_set_pos(tele_card, PAD, TELE_CARD_Y);
-    lv_obj_set_style_radius(tele_card, 8, 0);
-    lv_obj_set_style_bg_color(tele_card, lv_color_hex(COL_BAR), 0);
-    lv_obj_set_style_bg_opa(tele_card, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(tele_card, 1, 0);
-    lv_obj_set_style_border_color(tele_card, lv_color_hex(COL_LINE), 0);
-    lv_obj_set_style_pad_all(tele_card, 0, 0);
-    lv_obj_clear_flag(tele_card, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
 
     lv_obj_t *tele_cont = make_obj(tele_card);
     lv_obj_set_size(tele_cont, TELE_ROW_W, 2 * TELE_PITCH + 22);
     lv_obj_set_pos(tele_cont, CARD_PAD, CARD_PAD);
 
-    s_val_temp = make_tele_row(tele_cont, "temperature", "--.- C",   lv_color_hex(COL_ACCENT), 0 * TELE_PITCH);
-    s_val_humi = make_tele_row(tele_cont, "humidity",    "-- %",     lv_color_hex(COL_ACCENT), 1 * TELE_PITCH);
-    s_val_pres = make_tele_row(tele_cont, "pressure",    "---- hPa", lv_color_hex(COL_ACCENT), 2 * TELE_PITCH);
+    s_val_temp = make_tele_row(tele_cont, "temperature", "--.- C",   0 * TELE_PITCH);
+    s_val_humi = make_tele_row(tele_cont, "humidity",    "-- %",     1 * TELE_PITCH);
+    s_val_pres = make_tele_row(tele_cont, "pressure",    "---- hPa", 2 * TELE_PITCH);
 
     for(int i = 1; i < 3; i++) {
         lv_obj_t *sep = make_obj(tele_cont);
+        lv_obj_add_style(sep, &st_fill_line, 0);
         lv_obj_set_size(sep, TELE_ROW_W, 1);
         lv_obj_set_pos(sep, 0, i * TELE_PITCH - 4);
-        lv_obj_set_style_bg_color(sep, lv_color_hex(COL_LINE), 0);
-        lv_obj_set_style_bg_opa(sep, LV_OPA_COVER, 0);
     }
 }
 
@@ -813,20 +933,14 @@ static void make_cmd_badges(lv_obj_t *joy_panel)
     const char *badge_labels[5] = { "FWD", "BWD", "STP", "LFT", "RGT" };
     int32_t badge_x = (SIDE_W - (5 * BADGE_W + 4 * BADGE_GAP)) / 2;   // centre the row
     for(int i = 0; i < 5; i++) {
-        lv_obj_t *badge = lv_obj_create(joy_panel);
+        lv_obj_t *badge = make_obj(joy_panel);
+        lv_obj_add_style(badge, &st_chip, 0);
         lv_obj_set_size(badge, BADGE_W, BADGE_H);
         lv_obj_set_pos(badge, badge_x, 44);
-        lv_obj_set_style_radius(badge, BADGE_H / 2, 0);
-        lv_obj_set_style_bg_color(badge, lv_color_hex(COL_BADGE_BG), 0);
-        lv_obj_set_style_bg_opa(badge, LV_OPA_COVER, 0);
-        lv_obj_set_style_border_width(badge, 1, 0);
-        lv_obj_set_style_border_color(badge, lv_color_hex(COL_LINE), 0);
-        lv_obj_set_style_pad_all(badge, 0, 0);
-        lv_obj_clear_flag(badge, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_t *bl = make_label(badge, badge_labels[i],
-            lv_color_hex(COL_TEXT_LO), UI_FONT);
+        lv_obj_t *bl = make_label(badge, badge_labels[i], NULL, NULL);
         lv_obj_align(bl, LV_ALIGN_CENTER, 0, 0);
-        s_cmd_badges[i] = badge;
+        s_cmd_badges[i]     = badge;
+        s_cmd_badge_lbls[i] = bl;
         badge_x += BADGE_STEP;
     }
     update_cmd_badges(CMD_STOP);
@@ -837,35 +951,34 @@ static void make_joystick(lv_obj_t *joy_panel)
 {
     // Outer concentric ring gives the joystick an instrument-dial look
     lv_obj_t *joy_ring = make_obj(joy_panel);
+    lv_obj_add_style(joy_ring, &st_border_line, 0);
     lv_obj_set_size(joy_ring, 146, 146);
     lv_obj_set_pos(joy_ring, (SIDE_W - 146) / 2, 78);
     lv_obj_set_style_radius(joy_ring, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_border_width(joy_ring, 1, 0);
-    lv_obj_set_style_border_color(joy_ring, lv_color_hex(COL_LINE), 0);
-    lv_obj_set_style_border_opa(joy_ring, LV_OPA_COVER, 0);
 
     // Accent dots at the ring's diagonals complete the dial. 51 ≈ 72/√2,
     // the diagonal offset from the ring centre (73, 73).
     for(int dy = -1; dy <= 1; dy += 2) {
         for(int dx = -1; dx <= 1; dx += 2) {
             lv_obj_t *d = make_obj(joy_ring);
+            lv_obj_add_style(d, &st_fill_accent, 0);
             lv_obj_set_size(d, 3, 3);
             lv_obj_set_pos(d, 73 + dx * 51 - 1, 73 + dy * 51 - 1);
             lv_obj_set_style_radius(d, LV_RADIUS_CIRCLE, 0);
-            lv_obj_set_style_bg_color(d, lv_color_hex(COL_ACCENT), 0);
             lv_obj_set_style_bg_opa(d, LV_OPA_50, 0);
         }
     }
 
+    // base keeps the default container padding on purpose: the edge ticks
+    // below align to its content area, so the padding is their inset.
     lv_obj_t *base = lv_obj_create(joy_panel);
+    lv_obj_add_style(base, &st_fill_bg, 0);
+    lv_obj_add_style(base, &st_border_line, 0);
     lv_obj_set_size(base, 130, 130);
     lv_obj_set_pos(base, (SIDE_W - 130) / 2, 86);
     lv_obj_set_style_radius(base, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(base, lv_color_hex(COL_BG), 0);
-    lv_obj_set_style_bg_opa(base, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(base, 2, 0);
-    lv_obj_set_style_border_color(base, lv_color_hex(COL_LINE), 0);
-    lv_obj_set_style_border_opa(base, LV_OPA_COVER, 0);
     // Shadow removed — blurred shadow rendering into PSRAM framebuffers
     // stalled the LVGL render pass and tripped the task watchdog.
     lv_obj_clear_flag(base, LV_OBJ_FLAG_SCROLLABLE);
@@ -873,61 +986,49 @@ static void make_joystick(lv_obj_t *joy_panel)
     lv_obj_add_event_cb(base, joy_event, LV_EVENT_RELEASED,   NULL);
     lv_obj_add_event_cb(base, joy_event, LV_EVENT_PRESS_LOST, NULL);
 
-    lv_obj_t *guide = lv_obj_create(base);
+    lv_obj_t *guide = make_obj(base);
+    lv_obj_add_style(guide, &st_border_line, 0);
     lv_obj_set_size(guide, 82, 82);
     lv_obj_align(guide, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_style_radius(guide, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_opa(guide, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(guide, 1, 0);
-    lv_obj_set_style_border_color(guide, lv_color_hex(COL_LINE), 0);
-    lv_obj_set_style_border_opa(guide, LV_OPA_COVER, 0);
-    lv_obj_clear_flag(guide, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
 
     create_joy_tick(base, LV_ALIGN_TOP_MID,    0,  7, false);
     create_joy_tick(base, LV_ALIGN_BOTTOM_MID, 0, -7, false);
     create_joy_tick(base, LV_ALIGN_LEFT_MID,   7,  0, true);
     create_joy_tick(base, LV_ALIGN_RIGHT_MID, -7,  0, true);
 
-    s_halo = lv_obj_create(base);
+    s_halo = make_obj(base);
+    lv_obj_add_style(s_halo, &st_fill_accent, 0);
     lv_obj_set_size(s_halo, 62, 62);
     lv_obj_align(s_halo, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_style_radius(s_halo, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(s_halo, lv_color_hex(COL_ACCENT), 0);
     lv_obj_set_style_bg_opa(s_halo, LV_OPA_20, 0);
-    lv_obj_set_style_border_width(s_halo, 0, 0);
-    lv_obj_clear_flag(s_halo, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
 
-    s_knob = lv_obj_create(base);
+    s_knob = make_obj(base);
     lv_obj_set_size(s_knob, 46, 46);
     lv_obj_align(s_knob, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_style_radius(s_knob, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(s_knob, lv_color_hex(0x3A434F), 0);
+    lv_obj_set_style_bg_color(s_knob, lv_color_hex(KNOB_IDLE), 0);
     lv_obj_set_style_bg_opa(s_knob, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(s_knob, 0, 0);
     // Shadow removed — same watchdog/stall reason as the base above.
     lv_obj_set_style_transform_pivot_x(s_knob, 23, 0);
     lv_obj_set_style_transform_pivot_y(s_knob, 23, 0);
     lv_obj_set_style_transform_zoom(s_knob, 256, 0);
-    lv_obj_clear_flag(s_knob, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t *ch_ring = lv_obj_create(s_knob);
+    lv_obj_t *ch_ring = make_obj(s_knob);
+    lv_obj_add_style(ch_ring, &st_border_texthi, 0);
     lv_obj_set_size(ch_ring, 16, 16);
     lv_obj_align(ch_ring, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_style_radius(ch_ring, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_opa(ch_ring, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(ch_ring, 1, 0);
-    lv_obj_set_style_border_color(ch_ring, lv_color_hex(COL_TEXT_HI), 0);
-    lv_obj_set_style_border_opa(ch_ring, LV_OPA_40, 0);
-    lv_obj_clear_flag(ch_ring, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t *ch_dot = lv_obj_create(s_knob);
+    lv_obj_t *ch_dot = make_obj(s_knob);
+    lv_obj_add_style(ch_dot, &st_fill_texthi, 0);
     lv_obj_set_size(ch_dot, 4, 4);
     lv_obj_align(ch_dot, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_style_radius(ch_dot, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(ch_dot, lv_color_hex(COL_TEXT_HI), 0);
     lv_obj_set_style_bg_opa(ch_dot, LV_OPA_60, 0);
-    lv_obj_set_style_border_width(ch_dot, 0, 0);
-    lv_obj_clear_flag(ch_dot, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
 }
 
 // Joystick panel — floating card in the bottom left corner, aligned with the
@@ -945,46 +1046,41 @@ static void make_joy_panel(void)
 
 // Themes dropdown — floating card under the topbar's right side, hidden
 // until THEMES is tapped. Each item is labelled in its theme's accent colour;
-// a dot marks the active theme.
+// a dot marks the active theme (toggled by scout_ui_set_theme()).
 static void make_theme_menu(void)
 {
     s_theme_menu = make_obj(s_root);
+    lv_obj_add_style(s_theme_menu, &st_card, 0);
     lv_obj_set_size(s_theme_menu, MENU_W, THEME_COUNT * MENU_ITEM_H + 2 * MENU_PAD);
     lv_obj_set_pos(s_theme_menu, SCREEN_W - PANEL_GAP - MENU_W - 6, PANEL_GAP + BAR_H + 4);
-    lv_obj_set_style_radius(s_theme_menu, 8, 0);
-    lv_obj_set_style_bg_color(s_theme_menu, lv_color_hex(COL_BAR), 0);
-    lv_obj_set_style_bg_opa(s_theme_menu, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(s_theme_menu, 1, 0);
-    lv_obj_set_style_border_color(s_theme_menu, lv_color_hex(COL_LINE), 0);
     lv_obj_add_flag(s_theme_menu, LV_OBJ_FLAG_HIDDEN);
 
     for(uint8_t i = 0; i < THEME_COUNT; i++) {
         lv_obj_t *item = lv_obj_create(s_theme_menu);
+        lv_obj_add_style(item, &st_reset, 0);
+        lv_obj_add_style(item, &st_menu_item, 0);
+        lv_obj_add_style(item, &st_pressed, LV_STATE_PRESSED);
         lv_obj_set_size(item, MENU_W - 2 * MENU_PAD, MENU_ITEM_H);
         lv_obj_set_pos(item, MENU_PAD, MENU_PAD + i * MENU_ITEM_H);
-        lv_obj_set_style_radius(item, 6, 0);
-        lv_obj_set_style_border_width(item, 0, 0);
-        lv_obj_set_style_pad_all(item, 0, 0);
-        lv_obj_set_style_bg_opa(item, LV_OPA_TRANSP, 0);
-        lv_obj_set_style_bg_color(item, lv_color_hex(COL_BADGE_ON), LV_STATE_PRESSED);
-        lv_obj_set_style_bg_opa(item, LV_OPA_COVER, LV_STATE_PRESSED);
         lv_obj_clear_flag(item, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_add_event_cb(item, theme_item_event, LV_EVENT_CLICKED,
                             (void *)(uintptr_t)i);
 
-        lv_obj_t *l = make_label(item, s_themes[i].name,
-            lv_color_hex(s_themes[i].accent), UI_FONT);
+        // Each row keeps its own theme's accent — a fixed colour, not the
+        // current one — so it is set locally rather than via a shared style.
+        lv_obj_t *l = make_label(item, s_themes[i].name, NULL, NULL);
+        lv_obj_set_style_text_color(l, lv_color_hex(s_themes[i].accent), 0);
         lv_obj_set_style_text_letter_space(l, 2, 0);
         lv_obj_align(l, LV_ALIGN_LEFT_MID, 10, 0);
 
-        if(&s_themes[i] == s_th) {
-            lv_obj_t *dot = make_obj(item);
-            lv_obj_set_size(dot, 4, 4);
-            lv_obj_align(dot, LV_ALIGN_RIGHT_MID, -10, 0);
-            lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
-            lv_obj_set_style_bg_color(dot, lv_color_hex(s_themes[i].accent), 0);
-            lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
-        }
+        lv_obj_t *dot = make_obj(item);
+        lv_obj_set_size(dot, 4, 4);
+        lv_obj_align(dot, LV_ALIGN_RIGHT_MID, -10, 0);
+        lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_color(dot, lv_color_hex(s_themes[i].accent), 0);
+        lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+        if(&s_themes[i] != s_th) lv_obj_add_flag(dot, LV_OBJ_FLAG_HIDDEN);
+        s_theme_dots[i] = dot;
     }
 }
 
@@ -993,25 +1089,25 @@ static void make_theme_menu(void)
 static void make_cam_tick(int32_t x, int32_t y, bool horiz)
 {
     lv_obj_t *t = make_obj(s_root);
+    lv_obj_add_style(t, &st_fill_accent, 0);
     lv_obj_set_size(t, horiz ? 14 : 2, horiz ? 2 : 14);
     lv_obj_set_pos(t, x, y);
     lv_obj_set_style_radius(t, 1, 0);
-    lv_obj_set_style_bg_color(t, lv_color_hex(COL_ACCENT), 0);
     lv_obj_set_style_bg_opa(t, LV_OPA_70, 0);
 }
 
 // Viewfinder corners — the video is blitted between them by render.c.
 static void make_cam_corners(void)
 {
-    make_cam_corner(CAM_X - CAM_GAP, CAM_Y - CAM_GAP,
-                    LV_BORDER_SIDE_TOP | LV_BORDER_SIDE_LEFT);
-    make_cam_corner(CAM_X + CAM_W + CAM_GAP - CAM_CORNER, CAM_Y - CAM_GAP,
-                    LV_BORDER_SIDE_TOP | LV_BORDER_SIDE_RIGHT);
-    make_cam_corner(CAM_X - CAM_GAP, CAM_Y + CAM_H + CAM_GAP - CAM_CORNER,
-                    LV_BORDER_SIDE_BOTTOM | LV_BORDER_SIDE_LEFT);
-    make_cam_corner(CAM_X + CAM_W + CAM_GAP - CAM_CORNER,
-                    CAM_Y + CAM_H + CAM_GAP - CAM_CORNER,
-                    LV_BORDER_SIDE_BOTTOM | LV_BORDER_SIDE_RIGHT);
+    make_corner(s_root, CAM_X - CAM_GAP, CAM_Y - CAM_GAP,
+                CAM_CORNER, LV_BORDER_SIDE_TOP | LV_BORDER_SIDE_LEFT, LV_OPA_COVER);
+    make_corner(s_root, CAM_X + CAM_W + CAM_GAP - CAM_CORNER, CAM_Y - CAM_GAP,
+                CAM_CORNER, LV_BORDER_SIDE_TOP | LV_BORDER_SIDE_RIGHT, LV_OPA_COVER);
+    make_corner(s_root, CAM_X - CAM_GAP, CAM_Y + CAM_H + CAM_GAP - CAM_CORNER,
+                CAM_CORNER, LV_BORDER_SIDE_BOTTOM | LV_BORDER_SIDE_LEFT, LV_OPA_COVER);
+    make_corner(s_root, CAM_X + CAM_W + CAM_GAP - CAM_CORNER,
+                CAM_Y + CAM_H + CAM_GAP - CAM_CORNER,
+                CAM_CORNER, LV_BORDER_SIDE_BOTTOM | LV_BORDER_SIDE_RIGHT, LV_OPA_COVER);
 
     make_cam_tick(CAM_X + CAM_W / 2 - 7, CAM_Y - CAM_GAP + 1,        true);
     make_cam_tick(CAM_X + CAM_W / 2 - 7, CAM_Y + CAM_H + CAM_GAP - 3, true);
@@ -1039,7 +1135,6 @@ static void make_config_panels(void)
     //   sep           y=120
     //   row 2 label  y=128, slider y=142 (bottom=148)
     //   APPLY         y=CFG_BTN_Y=200
-
     s_cam_cfg_panel = make_panel(PANEL_GAP, CAM_Y, SIDE_W, PANEL_H);
     lv_obj_add_flag(s_cam_cfg_panel, LV_OBJ_FLAG_HIDDEN);
     make_section_hdr(s_cam_cfg_panel, "CAM CFG", HDR_Y);
@@ -1068,34 +1163,35 @@ static void make_config_panels(void)
     }
 }
 
-// Builds the full UI under a fresh s_root. Called at init and again after
-// each theme switch, so everything here must derive its colours from s_th.
 // Opaque cover over the camera region with a centred message. Hidden by default;
 // scene_render shows/hides it via scout_ui_overlay() (e.g. "WAITING FOR CAM").
 static void make_scene_overlay(void)
 {
     s_scene_overlay = make_obj(s_root);
+    lv_obj_add_style(s_scene_overlay, &st_fill_bg, 0);
     lv_obj_set_size(s_scene_overlay, CAM_W, CAM_H);
     lv_obj_set_pos(s_scene_overlay, CAM_X, CAM_Y);
-    lv_obj_set_style_bg_color(s_scene_overlay, lv_color_hex(COL_BG), 0);
-    lv_obj_set_style_bg_opa(s_scene_overlay, LV_OPA_COVER, 0);
 
-    s_scene_label = make_label(s_scene_overlay, "", lv_color_hex(COL_TEXT_HI), SCENE_FONT);
+    s_scene_label = make_label(s_scene_overlay, "", &st_fg_hi, &st_font_scene);
     lv_obj_set_width(s_scene_label, CAM_W - 2 * PAD);
     lv_obj_set_style_text_align(s_scene_label, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_letter_space(s_scene_label, 2, 0);
     lv_obj_set_style_text_line_space(s_scene_label, 8, 0);
     lv_obj_align(s_scene_label, LV_ALIGN_CENTER, 0, 0);
 
-    scout_ui_overlay(s_overlay_text);   // re-apply state across theme rebuilds
+    scout_ui_overlay(s_overlay_text);   // re-apply any pending message
 }
 
+// Builds the full UI under s_root. Called once at init; theme switches recolour
+// the shared styles instead of rebuilding, so everything here is created a
+// single time for the life of the program.
 static void build_ui(void)
 {
     make_stripe_tile();
+    styles_init();
+    styles_apply_theme();
 
-    lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(COL_BG), 0);
-    lv_obj_set_style_bg_opa(lv_scr_act(), LV_OPA_COVER, 0);
+    lv_obj_add_style(lv_scr_act(), &st_fill_bg, 0);
 
     s_root = make_obj(lv_scr_act());
     lv_obj_set_size(s_root, SCREEN_W, SCREEN_H);
@@ -1116,15 +1212,29 @@ void scout_ui_init(void)
     build_ui();
 }
 
+// Theme switch — recolour the shared styles, re-bake the crosshatch tile, then
+// ask LVGL to refresh. Widgets whose colours follow runtime state (link, wifi,
+// command badges) are re-applied; the active-theme name and dropdown marker are
+// updated directly. Nothing is destroyed or recreated.
 void scout_ui_set_theme(uint8_t idx)
 {
-    s_th = &s_themes[idx % THEME_COUNT];
-    lv_obj_del(s_root);
-    build_ui();
-    scout_ui_update(s_wifi_level);
-    for(size_t i = 0; i < sizeof s_tele / sizeof s_tele[0]; i++)
-        s_tele[i].last[0] = '\0';   // widgets were recreated — force a repaint
-    scout_ui_update_telemetry(&s_cam_diag);
+    idx %= THEME_COUNT;
+    s_th = &s_themes[idx];
+
+    styles_apply_theme();
+    make_stripe_tile();                          // re-bake the crosshatch in the new line colour
+    lv_img_cache_invalidate_src(&s_stripe_tile); // drop the cached decode of the old tile
+    lv_obj_report_style_change(NULL);            // refresh every object using the shared styles
+
+    scout_ui_update(s_wifi_level);               // link + wifi indicators
+    update_cmd_badges(s_cmd);                     // command badge highlight
+
+    lv_label_set_text(s_theme_name_lbl, s_th->name);
+    for(uint8_t i = 0; i < THEME_COUNT; i++)
+        lv_obj_add_flag(s_theme_dots[i], LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(s_theme_dots[idx], LV_OBJ_FLAG_HIDDEN);
+
+    lv_obj_invalidate(lv_scr_act());
 }
 
 void scout_ui_update(uint8_t wifi_level)
@@ -1134,6 +1244,7 @@ void scout_ui_update(uint8_t wifi_level)
         lv_obj_clear_flag(s_wifi_slash, LV_OBJ_FLAG_HIDDEN);
     else
         lv_obj_add_flag(s_wifi_slash, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_style_line_color(s_wifi_slash, lv_color_hex(COL_BAD), 0);
     lv_obj_set_style_bg_color(s_wifi_dot,
         lv_color_hex(wifi_level ? COL_TEXT_HI : COL_BAD), 0);
     for(int i = 0; i < 3; i++) {
@@ -1165,7 +1276,7 @@ void scout_ui_update_telemetry(const cam_diag_pkt_t *d)
 
 void scout_ui_overlay(const char *text)
 {
-    s_overlay_text = text;   // cached so a theme rebuild can restore it
+    s_overlay_text = text;   // cached so make_scene_overlay can restore it at init
     if(text) {
         lv_label_set_text(s_scene_label, text);
         lv_obj_clear_flag(s_scene_overlay, LV_OBJ_FLAG_HIDDEN);
@@ -1174,25 +1285,12 @@ void scout_ui_overlay(const char *text)
     }
 }
 
-// One L-shaped viewfinder bracket on the intro overlay, mirroring the camera
-// corners in the main UI. side selects which two edges form the L.
-static void intro_corner(int32_t x, int32_t y, lv_border_side_t side)
-{
-    lv_obj_t *c = make_obj(s_intro_overlay);
-    lv_obj_set_size(c, INTRO_CORNER, INTRO_CORNER);
-    lv_obj_set_pos(c, x, y);
-    lv_obj_set_style_border_width(c, 2, 0);
-    lv_obj_set_style_border_color(c, lv_color_hex(COL_ACCENT), 0);
-    lv_obj_set_style_border_side(c, side, 0);
-    lv_obj_set_style_border_opa(c, LV_OPA_50, 0);
-}
-
-// A header/footer hairline label — small, wide-tracked, sits on the bare
-// background to frame the hero the way the top/bottom bars frame the UI.
-static lv_obj_t *intro_frame_label(const char *text, lv_color_t color,
+// A header/footer hairline label on the intro overlay — small, wide-tracked,
+// sitting on the bare background to frame the hero like the top/bottom bars.
+static lv_obj_t *intro_frame_label(const char *text, lv_style_t *fg,
                                    lv_align_t align, int32_t x, int32_t y)
 {
-    lv_obj_t *l = make_label(s_intro_overlay, text, color, UI_FONT);
+    lv_obj_t *l = make_label(s_intro_overlay, text, fg, NULL);
     lv_obj_set_style_text_letter_space(l, 2, 0);
     lv_obj_align(l, align, x, y);
     return l;
@@ -1205,53 +1303,46 @@ void scout_ui_intro_screen(uint8_t total_steps)
     s_intro_step  = 0;
 
     // Overlay on the main screen — avoids lv_scr_load framebuffer issues
-    s_intro_overlay = lv_obj_create(lv_scr_act());
+    s_intro_overlay = make_obj(lv_scr_act());
+    lv_obj_add_style(s_intro_overlay, &st_fill_bg, 0);
     lv_obj_set_size(s_intro_overlay, SCREEN_W, SCREEN_H);
     lv_obj_set_pos(s_intro_overlay, 0, 0);
-    lv_obj_set_style_bg_color(s_intro_overlay, lv_color_hex(COL_BG), 0);
-    lv_obj_set_style_bg_opa(s_intro_overlay, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(s_intro_overlay, 0, 0);
-    lv_obj_set_style_radius(s_intro_overlay, 0, 0);
-    lv_obj_set_style_pad_all(s_intro_overlay, 0, 0);
-    lv_obj_clear_flag(s_intro_overlay, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
 
     // Viewfinder brackets at the four corners — the signature framing motif.
-    intro_corner(INTRO_FRAME, INTRO_FRAME,
-                 LV_BORDER_SIDE_LEFT | LV_BORDER_SIDE_TOP);
-    intro_corner(SCREEN_W - INTRO_FRAME - INTRO_CORNER, INTRO_FRAME,
-                 LV_BORDER_SIDE_RIGHT | LV_BORDER_SIDE_TOP);
-    intro_corner(INTRO_FRAME, SCREEN_H - INTRO_FRAME - INTRO_CORNER,
-                 LV_BORDER_SIDE_LEFT | LV_BORDER_SIDE_BOTTOM);
-    intro_corner(SCREEN_W - INTRO_FRAME - INTRO_CORNER,
-                 SCREEN_H - INTRO_FRAME - INTRO_CORNER,
-                 LV_BORDER_SIDE_RIGHT | LV_BORDER_SIDE_BOTTOM);
+    make_corner(s_intro_overlay, INTRO_FRAME, INTRO_FRAME,
+                INTRO_CORNER, LV_BORDER_SIDE_LEFT | LV_BORDER_SIDE_TOP, LV_OPA_50);
+    make_corner(s_intro_overlay, SCREEN_W - INTRO_FRAME - INTRO_CORNER, INTRO_FRAME,
+                INTRO_CORNER, LV_BORDER_SIDE_RIGHT | LV_BORDER_SIDE_TOP, LV_OPA_50);
+    make_corner(s_intro_overlay, INTRO_FRAME, SCREEN_H - INTRO_FRAME - INTRO_CORNER,
+                INTRO_CORNER, LV_BORDER_SIDE_LEFT | LV_BORDER_SIDE_BOTTOM, LV_OPA_50);
+    make_corner(s_intro_overlay, SCREEN_W - INTRO_FRAME - INTRO_CORNER,
+                SCREEN_H - INTRO_FRAME - INTRO_CORNER,
+                INTRO_CORNER, LV_BORDER_SIDE_RIGHT | LV_BORDER_SIDE_BOTTOM, LV_OPA_50);
 
     // Header hairline: maker brand left, boot tag right — vertically centred
     // on the corner brackets.
-    intro_frame_label("LINTECH", lv_color_hex(COL_TEXT_LO),
+    intro_frame_label("LINTECH", &st_fg_lo,
                       LV_ALIGN_TOP_LEFT, INTRO_FRAME + 14, INTRO_TAG_DY);
-    intro_frame_label("BOOT SEQUENCE", lv_color_hex(COL_TEXT_LO),
+    intro_frame_label("BOOT SEQUENCE", &st_fg_lo,
                       LV_ALIGN_TOP_RIGHT, -(INTRO_FRAME + 14), INTRO_TAG_DY);
 
     // Footer hairline: firmware version left, RTOS tag right (accent value),
     // matching the bottom bar's RTOS | FREERTOS cluster.
-    intro_frame_label("FW v1.0.0", lv_color_hex(COL_TEXT_LO),
+    intro_frame_label("FW v1.0.0", &st_fg_lo,
                       LV_ALIGN_BOTTOM_LEFT, INTRO_FRAME + 14, -INTRO_TAG_DY);
-    intro_frame_label("FREERTOS", lv_color_hex(COL_ACCENT),
+    intro_frame_label("FREERTOS", &st_fg_accent,
                       LV_ALIGN_BOTTOM_RIGHT, -(INTRO_FRAME + 14), -INTRO_TAG_DY);
-    intro_frame_label("RTOS", lv_color_hex(COL_TEXT_LO),
+    intro_frame_label("RTOS", &st_fg_lo,
                       LV_ALIGN_BOTTOM_RIGHT, -(INTRO_FRAME + 106), -INTRO_TAG_DY);
 
-    // Hero wordmark with a soft accent glow.
-    lv_obj_t *logo = lv_label_create(s_intro_overlay);
-    lv_label_set_text(logo, "SCOUT");
-    lv_obj_set_style_text_color(logo, lv_color_hex(COL_ACCENT), 0);
-    lv_obj_set_style_text_font(logo, LOGO_FONT, 0);
+    // Hero wordmark.
+    lv_obj_t *logo = make_label(s_intro_overlay, "SCOUT", &st_fg_accent, &st_font_logo);
     lv_obj_set_style_text_letter_space(logo, 8, 0);
     lv_obj_align(logo, LV_ALIGN_CENTER, 4, INTRO_LOGO_Y);   // +4 optical centre vs letter-space
 
     // Accent divider under the wordmark — a centred line fading out to each
-    // side, built from two mirrored gradient halves.
+    // side, built from two mirrored gradient halves. The gradient endpoints
+    // are baked locally; the intro is built once at boot, before any switch.
     lv_obj_t *rule_l = make_obj(s_intro_overlay);
     lv_obj_set_size(rule_l, INTRO_RULE_W / 2, 2);
     lv_obj_align(rule_l, LV_ALIGN_CENTER, -INTRO_RULE_W / 4, INTRO_RULE_Y);
@@ -1269,8 +1360,7 @@ void scout_ui_intro_screen(uint8_t total_steps)
     lv_obj_set_style_bg_opa(rule_r, LV_OPA_COVER, 0);
 
     // Subtitle / product line.
-    lv_obj_t *sub = make_label(s_intro_overlay, "DEVELOPED BY LINTECH",
-        lv_color_hex(COL_TEXT_MID), UI_FONT);
+    lv_obj_t *sub = make_label(s_intro_overlay, "DEVELOPED BY LINTECH", &st_fg_mid, NULL);
     lv_obj_set_style_text_letter_space(sub, 8, 0);
     lv_obj_align(sub, LV_ALIGN_CENTER, 0, INTRO_SUB_Y);
 
@@ -1278,27 +1368,22 @@ void scout_ui_intro_screen(uint8_t total_steps)
     int32_t dots_x0 = -(int32_t)(s_intro_total - 1) * INTRO_DOT_GAP / 2;
     for(int i = 0; i < s_intro_total; i++) {
         lv_obj_t *d = make_obj(s_intro_overlay);
+        lv_obj_add_style(d, &st_fill_line, 0);
         lv_obj_set_size(d, 6, 6);
         lv_obj_align(d, LV_ALIGN_CENTER, dots_x0 + i * INTRO_DOT_GAP, INTRO_DOTS_Y);
         lv_obj_set_style_radius(d, LV_RADIUS_CIRCLE, 0);
-        lv_obj_set_style_bg_color(d, lv_color_hex(COL_LINE), 0);
-        lv_obj_set_style_bg_opa(d, LV_OPA_COVER, 0);
         s_intro_dots[i] = d;
     }
 
-    lv_obj_t *track = lv_obj_create(s_intro_overlay);
+    lv_obj_t *track = make_obj(s_intro_overlay);
+    lv_obj_add_style(track, &st_card, 0);
     lv_obj_set_size(track, INTRO_BAR_W, INTRO_BAR_H);
     lv_obj_align(track, LV_ALIGN_CENTER, 0, INTRO_BAR_Y);
     lv_obj_set_style_bg_color(track, lv_color_hex(COL_PANEL), 0);
-    lv_obj_set_style_bg_opa(track, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(track, 1, 0);
-    lv_obj_set_style_border_color(track, lv_color_hex(COL_LINE), 0);
-    lv_obj_set_style_border_opa(track, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(track, INTRO_BAR_H / 2, 0);
     lv_obj_set_style_pad_all(track, 2, 0);
-    lv_obj_clear_flag(track, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
 
-    s_intro_bar_fill = lv_obj_create(track);
+    s_intro_bar_fill = make_obj(track);
     lv_obj_set_size(s_intro_bar_fill, 0, INTRO_FILL_H);
     lv_obj_set_pos(s_intro_bar_fill, 0, 0);
     lv_obj_set_style_radius(s_intro_bar_fill, INTRO_FILL_H / 2, 0);
@@ -1306,38 +1391,28 @@ void scout_ui_intro_screen(uint8_t total_steps)
     lv_obj_set_style_bg_grad_color(s_intro_bar_fill, lv_color_hex(COL_ACCENT), 0);
     lv_obj_set_style_bg_grad_dir(s_intro_bar_fill, LV_GRAD_DIR_HOR, 0);
     lv_obj_set_style_bg_opa(s_intro_bar_fill, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(s_intro_bar_fill, 0, 0);
-    lv_obj_set_style_pad_all(s_intro_bar_fill, 0, 0);
     // Accent glow so the fill reads as energised, not a flat block.
     lv_obj_set_style_shadow_color(s_intro_bar_fill, lv_color_hex(COL_ACCENT), 0);
     lv_obj_set_style_shadow_width(s_intro_bar_fill, 12, 0);
     lv_obj_set_style_shadow_spread(s_intro_bar_fill, 0, 0);
     lv_obj_set_style_shadow_opa(s_intro_bar_fill, LV_OPA_40, 0);
-    lv_obj_clear_flag(s_intro_bar_fill, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
 
     // Status row: an accent activity dot, the current step left-aligned, and
     // the percentage right-aligned. Fixed widths + alignment keep the edges
     // anchored to the bar as the text changes.
     lv_obj_t *sdot = make_obj(s_intro_overlay);
+    lv_obj_add_style(sdot, &st_fill_accent, 0);
     lv_obj_set_size(sdot, 6, 6);
     lv_obj_align(sdot, LV_ALIGN_CENTER, -(INTRO_BAR_W / 2) + 3, INTRO_TEXT_Y);
     lv_obj_set_style_radius(sdot, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(sdot, lv_color_hex(COL_ACCENT), 0);
-    lv_obj_set_style_bg_opa(sdot, LV_OPA_COVER, 0);
 
-    s_intro_status = lv_label_create(s_intro_overlay);
-    lv_label_set_text(s_intro_status, "STARTING");
-    lv_obj_set_style_text_color(s_intro_status, lv_color_hex(COL_TEXT_MID), 0);
-    lv_obj_set_style_text_font(s_intro_status, UI_FONT, 0);
+    s_intro_status = make_label(s_intro_overlay, "STARTING", &st_fg_mid, NULL);
     lv_obj_set_style_text_letter_space(s_intro_status, 4, 0);
     lv_obj_set_width(s_intro_status, 240);
     lv_obj_set_style_text_align(s_intro_status, LV_TEXT_ALIGN_LEFT, 0);
     lv_obj_align(s_intro_status, LV_ALIGN_CENTER, -(INTRO_BAR_W / 2) + 136, INTRO_TEXT_Y);
 
-    s_intro_pct = lv_label_create(s_intro_overlay);
-    lv_label_set_text(s_intro_pct, "0%");
-    lv_obj_set_style_text_color(s_intro_pct, lv_color_hex(COL_TEXT_HI), 0);
-    lv_obj_set_style_text_font(s_intro_pct, UI_FONT, 0);
+    s_intro_pct = make_label(s_intro_overlay, "0%", &st_fg_hi, NULL);
     lv_obj_set_style_text_letter_space(s_intro_pct, 2, 0);
     lv_obj_set_width(s_intro_pct, 80);
     lv_obj_set_style_text_align(s_intro_pct, LV_TEXT_ALIGN_RIGHT, 0);
