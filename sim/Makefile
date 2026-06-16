@@ -18,7 +18,10 @@ LDFLAGS := $(shell sdl2-config --libs) -lm
 
 LVGL_SRC := $(shell find $(LVGL)/src -name '*.c')
 LVGL_OBJ := $(patsubst $(LVGL)/%.c,$(BUILD)/lvgl/%.o,$(LVGL_SRC))
-UI_SRC   := $(UI)/scout_ui.c $(UI)/fonts/press_start_2p_8.c $(UI)/fonts/press_start_2p_24.c $(UI)/fonts/press_start_2p_96.c
+UI_SRC   := $(wildcard $(UI)/*.c) \
+            $(UI)/fonts/press_start_2p_8.c \
+            $(UI)/fonts/press_start_2p_24.c \
+            $(UI)/fonts/press_start_2p_96.c
 UI_OBJ   := $(patsubst $(UI)/%.c,$(BUILD)/ui/%.o,$(UI_SRC))
 APP_SRC  := $(wildcard *.c)
 APP_OBJ  := $(patsubst %.c,$(BUILD)/%.o,$(APP_SRC))

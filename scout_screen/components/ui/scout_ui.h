@@ -66,5 +66,4 @@ bool scout_ui_cfg_dirty_take(void);
  * @param[out] agc_gain  Auto-gain level (0 = AGC, 1–10 = manual).
  * @pre    scout_ui_init() must have been called.
  */
-void scout_ui_get_cam_cfg(bool *cam_on, int8_t *quality,
-                           int8_t *ae_level, int8_t *agc_gain);
+void scout_ui_get_cam_cfg(bool *cam_on, int8_t *quality, int8_t *ae_level, int8_t *agc_gain);
