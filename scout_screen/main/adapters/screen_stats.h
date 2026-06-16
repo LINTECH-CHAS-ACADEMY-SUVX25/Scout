@@ -40,21 +40,31 @@ typedef struct {
     uint32_t    disp_fps_tenths;
 } screen_stats_t;
 
-/** @brief Wires ring pointers and flags into ctx for the render task. Call once before the loop starts. */
+/**
+ * @brief  Wires ring pointers and flags into ctx for the render task.
+ * @param  ctx  Render task tick context to initialise.
+ * @pre    Call once before the render loop starts.
+ */
 void screen_stats_render_tick_init(screen_tick_t *ctx);
 
-/** @brief Wires ctx for the stream task. Call once before the loop starts. */
+/**
+ * @brief  Wires ctx for the stream task.
+ * @param  ctx  Stream task tick context to initialise.
+ * @pre    Call once before the stream loop starts.
+ */
 void screen_stats_stream_tick_init(screen_tick_t *ctx);
 
 /**
- * @brief Call at the top of any task loop. Commits the previous iteration's splits into the
- *        ring buffers and starts a fresh timer.
+ * @brief  Commits the previous iteration's splits into ring buffers and starts a fresh timer.
+ * @param  ctx  Tick context for the calling task.
+ * @note   Call at the top of each task loop iteration.
  */
 void screen_stats_tick(screen_tick_t *ctx);
 
 /**
- * @brief Records elapsed time since the previous split (or tick) into slot.
- * @param slot Pointer to the named field: &ctx->lvgl, &ctx->decode, etc.
+ * @brief  Records elapsed time since the previous split (or tick) into slot.
+ * @param  ctx   Tick context for the calling task.
+ * @param  slot  Target slot: &ctx->lvgl, &ctx->decode, etc.
  */
 void screen_stats_tick_split(screen_tick_t *ctx, tick_slot_t *slot);
 

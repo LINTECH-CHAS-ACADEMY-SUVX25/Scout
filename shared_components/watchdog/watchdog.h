@@ -9,8 +9,10 @@ typedef struct {
 } watchdog_config_t;
 
 /**
- * @brief Arms the task watchdog. Pass NULL to use defaults (WATCHDOG_TIMEOUT_MS,
- *        idle tasks on all cores monitored). Call once at startup before any task registers.
+ * @brief  Arms the task watchdog.
+ * @param  cfg  Configuration, or NULL to use defaults (WATCHDOG_TIMEOUT_MS,
+ *              idle tasks on all cores monitored).
+ * @pre    Call once at startup, before any task calls watchdog_register().
  */
 void watchdog_init(const watchdog_config_t *cfg);
 

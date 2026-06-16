@@ -6,14 +6,19 @@ struct sockaddr_in;
 void cfg_tx_init(void);
 void cfg_tx_bind(int sock);
 
-/** @brief Records the camera's source address from the first received packet. No-op thereafter. */
+/**
+ * @brief  Records the camera's source address from the first received packet. No-op thereafter.
+ * @param  src  Source address extracted from the received UDP packet.
+ */
 void cfg_tx_learn(const struct sockaddr_in *src);
 
 void cfg_tx_send(uint8_t cmd, int8_t value);
 
 /**
- * @brief Queues a command for sending on the next cfg_tx_flush() call.
- *        Use push + flush to batch multiple settings in one pass.
+ * @brief  Queues a command for sending on the next cfg_tx_flush() call.
+ *         Use push + flush to batch multiple settings in one pass.
+ * @param  cmd    Camera control command (cam_ctrl_cmd_t).
+ * @param  value  Argument for SET_* commands; ignored for ON/OFF commands.
  */
 void cfg_tx_push(uint8_t cmd, int8_t value);
 void cfg_tx_flush(void);

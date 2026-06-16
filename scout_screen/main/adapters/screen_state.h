@@ -26,8 +26,9 @@ extern screen_status_t screen_status;
 void screen_state_mark_rx_time(uint32_t now_ms);
 
 /**
- * @brief Sets the active scene. Callable from any task/core — lock-free single-word store,
- *        last writer wins.
+ * @brief  Sets the active scene.
+ * @param  s  Scene to activate.
+ * @note   Callable from any task/core — lock-free single-word store, last writer wins.
  */
 void screen_state_set_scene(scene_t s);
 
