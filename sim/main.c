@@ -119,30 +119,6 @@ static void lvgl_init(void)
     lv_indev_drv_register(&indev_drv);
 }
 
-// Renderar några frames och sparar en BMP. Kör med SIM_SHOT=fil.bmp ./sim
-// (oftast med SDL_VIDEODRIVER=offscreen) för att fånga UI:t utan fönster.
-static void screenshot(const char *path)
-{
-    const char *ms = SDL_getenv("SIM_SHOT_MS");   // spola fram så här långt först
-    int budget = ms ? SDL_atoi(ms) : 100;
-    for(int t = 0; t < budget; t += 20) {
-        fake_intro_steps((uint32_t)t);
-        lv_tick_inc(20);
-        lv_timer_handler();
-    }
-    const char *theme = SDL_getenv("SIM_THEME");  // byt tema innan dumpen
-    if(theme) {
-        scout_ui_set_theme((uint8_t)SDL_atoi(theme));
-        lv_timer_handler();
-    }
-    SDL_Surface *surf = SDL_CreateRGBSurfaceWithFormat(
-        0, SCREEN_W, SCREEN_H, 16, SDL_PIXELFORMAT_RGB565);
-    SDL_RenderReadPixels(s_ren, NULL, SDL_PIXELFORMAT_RGB565,
-        surf->pixels, surf->pitch);
-    SDL_SaveBMP(surf, path);
-    SDL_FreeSurface(surf);
-}
-
 int main(void)
 {
     sdl_init();
@@ -151,13 +127,6 @@ int main(void)
     scout_ui_init();
     make_camera_box();
     scout_ui_intro_screen(INTRO_STEPS);
-
-    const char *shot = SDL_getenv("SIM_SHOT");
-    if(shot) {
-        screenshot(shot);
-        SDL_Quit();
-        return 0;
-    }
 
     bool running      = true;
     uint8_t wifi_lvl  = 0;

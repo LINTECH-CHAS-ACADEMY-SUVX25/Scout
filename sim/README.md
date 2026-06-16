@@ -1,66 +1,66 @@
-# Scout UI-simulator
+# Scout UI simulator
 
-Kör skärmens LVGL-UI på en PC via SDL2, så att UI-arbetet kan göras utan
-att flasha hårdvara. Bygger LVGL **och UI-koden** från samma källträd som
-`scout_screen` använder (`scout_screen/components/lvgl_port/`) — det finns
-ingen kopia att hålla i synk; en ändring i `lvgl_port_ui.c` syns i både
-simulatorn och firmware-bygget.
+Runs the screen's LVGL UI on a PC via SDL2 so UI work can be done without
+flashing hardware. Builds LVGL **and the UI code** from the same source tree
+that `scout_screen` uses — there is no copy to keep in sync; a change to
+`scout_ui.c` is immediately reflected in both the simulator and the firmware
+build.
 
-## Bygg och kör
+## Build and run
 
 ```sh
 cd sim
 make run
 ```
 
-Första bygget tar en stund (hela LVGL kompileras). Därefter byggs bara det
-som ändrats. `make clean` tömmer `build/`.
+The first build takes a while (all of LVGL is compiled). After that only
+changed files are rebuilt. `make clean` wipes `build/`.
 
-Tangenter i fönstret:
-* **c** — stega wifi-signalnivån 0-3 (testar `lvgl_port_ui_update`)
-* **t** — stega färgtemat SONAR → DESERT → NIGHT OPS (samma byte som
-  THEMES-dropdownen i topbaren gör)
-* **q** / **Esc** — avsluta
+Keys in the window:
 
-Joysticken styrs med musen, precis som touch på enheten.
+* **c** — cycle WiFi signal level 0–3 (exercises `scout_ui_update`)
+* **t** — cycle colour theme SONAR → DESERT → NIGHT OPS (same byte the THEMES
+  dropdown in the top bar uses)
+* **q** / **Esc** — quit
 
-Vid start visas intro-overlayn (`lvgl_port_intro_screen`) med boot-stegen
-WIFI → MONITOR → STREAM → READY. På enheten kommer stegen från `app_main`
-mellan de riktiga init-anropen; simulatorn fejkar dem med 1 s mellanrum
-(`INTRO_STEP_MS` i `main.c`). 1,2 s efter sista steget tar overlayn bort
-sig själv och visar UI:t — totalt ~5,2 s i simulatorn.
+The joystick is controlled with the mouse, just like touch on the device.
 
-Ändrar du `lv_conf.h` (t.ex. aktiverar en font): kör `make clean` först —
-LVGL-objekten spårar inte `lv_conf.h` och byggs annars inte om.
+At startup the intro overlay (`scout_ui_intro_screen`) runs through the boot
+steps WIFI → MONITOR → STREAM → READY. On the device these steps come from
+`app_main` between the real init calls; the simulator fakes them 1 s apart
+(`INTRO_STEP_MS` in `main.c`). 1.2 s after the last step the overlay removes
+itself and reveals the UI — about 5.2 s total in the simulator.
 
-Headless skärmdump: `SDL_VIDEODRIVER=offscreen SIM_SHOT=ut.bmp ./sim`. Lägg
-till `SIM_SHOT_MS=5500` för att spola fram förbi intron först, och
-`SIM_THEME=0|1|2` för att byta tema innan dumpen.
+If you change `lv_conf.h` (e.g. enable a font): run `make clean` first —
+LVGL objects do not track `lv_conf.h` and will not be rebuilt otherwise.
 
-## Så här hänger det ihop
+## File overview
 
-| Fil            | Roll                                                        |
-|----------------|-------------------------------------------------------------|
-| `main.c`       | SDL + LVGL-glue + kamerareferensram. Enbart för simulatorn  |
-| `lv_conf.h`    | PC-variant av enhetens `lv_conf.h`                          |
-| `display.h`    | `SCREEN_W` / `SCREEN_H` (ersätter enhetens `display.h`)     |
+Simulator-only files:
 
-Delade filer som kompileras från `scout_screen/components/lvgl_port/`:
+| File         | Role                                                      |
+|--------------|-----------------------------------------------------------|
+| `main.c`     | SDL + LVGL glue + camera reference box                    |
+| `lv_conf.h`  | PC variant of the device's `lv_conf.h`                    |
+| `display.h`  | `SCREEN_W` / `SCREEN_H` (shadows the device's `display.h`)|
 
-| Fil            | Roll                                                        |
-|----------------|-------------------------------------------------------------|
-| `lvgl_port_ui.c` | Hela UI-layouten — samma fil som enheten kompilerar       |
-| `press_start_2p_8.c`  | UI-fonten (genererad C-font, Press Start 2P 8px)    |
-| `press_start_2p_96.c` | Intro-loggans font (96px, endast mellanslag + A–Z)  |
+Shared files compiled from `scout_screen/components/ui/`:
+
+| File                    | Role                                              |
+|-------------------------|---------------------------------------------------|
+| `scout_ui.c`            | Full UI layout — the same file the device builds  |
+| `fonts/press_start_2p_8.c`  | UI font (generated C font, Press Start 2P 8 px) |
+| `fonts/press_start_2p_24.c` | Mid-size variant (24 px)                        |
+| `fonts/press_start_2p_96.c` | Intro label font (96 px, space + A–Z only)      |
 
 ## Font
 
-UI:t använder **Press Start 2P** (`press_start_2p_8.c`), en retro 8-bitars
-pixel-font, genererad från TTF med
-[`lv_font_conv`](https://github.com/lvgl/lv_font_conv). Den renderas i
-**bpp 1** (ingen antialiasing) så pixlarna förblir skarpa, och i en storlek
-som är multipel av fontens 8px-rutnät. Regenerera så här — viktigt:
-`--no-compress`, annars krävs `LV_USE_FONT_COMPRESSED` i `lv_conf.h`:
+The UI uses **Press Start 2P** (`press_start_2p_8.c`), a retro 8-bit pixel
+font generated from a TTF with
+[`lv_font_conv`](https://github.com/lvgl/lv_font_conv). It is rendered at
+**bpp 1** (no antialiasing) so pixels stay sharp, and at sizes that are
+multiples of the font's 8 px grid. To regenerate — note `--no-compress`,
+otherwise `LV_USE_FONT_COMPRESSED` must be enabled in `lv_conf.h`:
 
 ```sh
 npm install -g lv_font_conv
@@ -69,24 +69,27 @@ lv_font_conv --font PressStart2P-Regular.ttf \
   --range 0x20-0x7E --lv-font-name press_start_2p_8 -o press_start_2p_8.c
 ```
 
-Press Start 2P är OFL-licensierad — behåll licensfilen om fonten checkas in.
+Press Start 2P is OFL-licensed — keep the licence file if the font is checked
+in.
 
-Kamerarutan ritas som en cyan referensram på **480 × 480**, centrerad. På
-enheten finns ingen kamera-widget — videon blittas dit förbi LVGL av
-`render.c`. Ramen är bara där så layouten kan ritas runt rätt yta.
+## Camera box
 
-## Delad UI-kod
+The camera area is drawn as a cyan reference frame at **480 × 480**, centred.
+On the device there is no camera widget — video is blitted there directly by
+`render.c`, bypassing LVGL. The box exists only so the layout can be designed
+around the correct area.
 
-UI-layouten ligger i `scout_screen/components/lvgl_port/lvgl_port_ui.c` och
-kompileras av båda byggena — det finns inget kopieringssteg. När simulatorn
-ser rätt ut är firmware-koden redan uppdaterad; verifiera med `idf.py build`
-i `scout_screen/`.
+## Shared UI code
 
-`lvgl_port_ui.c` får inte inkludera ESP-IDF- eller FreeRTOS-headers (då
-bryts sim-bygget). Driver-delen (`flush_cb`, touch, tick, `lvgl_port_init`,
-`lvgl_port_render_frame`) lever i `lvgl_port.c` på enheten respektive i
-`main.c` i simulatorn.
+The UI layout lives in `scout_screen/components/ui/scout_ui.c` and is compiled
+by both builds — there is no copy step. When the simulator looks right, the
+firmware code is already updated; verify with `idf.py build` in
+`scout_screen/`.
 
-Simulatorns `display.h` skuggar enhetens (via include-ordningen i
-`Makefile`) och måste hålla `SCREEN_W`/`SCREEN_H` i synk med
+`scout_ui.c` must not include ESP-IDF or FreeRTOS headers (that would break
+the sim build). The driver layer (`flush_cb`, touch, tick, `lv_disp_drv`
+setup) lives in the device's `lvgl_port.c` and in `main.c` in the simulator.
+
+The simulator's `display.h` shadows the device's via the include order in the
+`Makefile` and must stay in sync with
 `scout_screen/components/display/display.h`.
