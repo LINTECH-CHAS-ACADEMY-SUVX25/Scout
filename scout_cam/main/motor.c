@@ -21,11 +21,12 @@ static void motor_run(void *arg);
 static void joy_to_motor(int16_t x, int16_t y, uint8_t *cmd, uint8_t *speed)
 {
     *cmd = CMD_STOP;
-    if(y >  112) *cmd |= CMD_FORWARD;
-    if(y < -112) *cmd |= CMD_BACKWARD;
-    if(x < -112) *cmd |= CMD_LEFT;
-    if(x >  112) *cmd |= CMD_RIGHT;
-    *speed = (*cmd == CMD_STOP) ? 0 : (uint8_t)sqrtf((float)(x * x + y * y));
+    if(y >  80) *cmd |= CMD_FORWARD;
+    if(y < -80) *cmd |= CMD_BACKWARD;
+    if(x < -80) *cmd |= CMD_LEFT;
+    if(x >  80) *cmd |= CMD_RIGHT;
+    float mag = sqrtf((float)(x * x + y * y));
+    *speed = (*cmd == CMD_STOP) ? 0 : (mag > 255.0f ? 255 : (uint8_t)mag);
 }
 
 void motor_init(void)

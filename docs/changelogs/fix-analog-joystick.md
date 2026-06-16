@@ -95,6 +95,17 @@ Screen-side: 640×480 display, joystick centered in video region. Displacement f
 
 Cam-side: Deadzone ±112 units (44% of ±255). Full deflection (±255) maps to speed 255 (magnitude of vector). Diagonal deflection (x=y=180) yields speed ~254.6 → capped at 255.
 
+## Post-merge fix — uint8_t overflow on diagonal input (2026-06-16)
+
+`joy_to_motor()` in `scout_cam/main/motor.c` cast the raw `sqrtf` result directly to `uint8_t`. Full diagonal deflection (x=y=255) yields ≈360.6 which wraps to 104 (40% power). Fixed by clamping before the cast:
+
+```c
+float mag = sqrtf((float)(x * x + y * y));
+*speed = (*cmd == CMD_STOP) ? 0 : (mag > 255.0f ? 255 : (uint8_t)mag);
+```
+
+Verified on device: full diagonal now drives motors at 100% speed.
+
 ## Device Verification
 
 - Joystick center position (within deadzone) → motors stop (speed=0)

@@ -20,7 +20,7 @@
 // Max knob offset from centre — base half (65) minus halo half (31), so
 // neither the knob nor its halo ever leaves the 130px joystick frame.
 #define JOY_RADIUS 34
-#define JOY_DEADZONE 15   // px from centre before a direction counts as pressed
+#define JOY_DEADZONE 10   // px from centre before a direction counts as pressed
 
 // Intro overlay loading bar — slim rounded track with a gradient fill.
 // The fill sits inside the track's 1px border + 2px padding (3px inset/side).
@@ -730,9 +730,9 @@ static lv_obj_t *make_slider_row(lv_obj_t *panel, const char *key, const char *i
 
     lv_obj_t *v = make_label(panel, init_val, &st_fg_accent, NULL);
     lv_obj_set_style_text_letter_space(v, 2, 0);
-    lv_obj_set_width(v, 64);
+    lv_obj_set_width(v, 48);
     lv_obj_set_style_text_align(v, LV_TEXT_ALIGN_RIGHT, 0);
-    lv_obj_set_pos(v, PAD + ROW_W - 64, y);
+    lv_obj_set_pos(v, PAD + ROW_W - 48, y);
 
     lv_obj_t *sl = lv_slider_create(panel);
     int32_t sl_w = ROW_W * 9 / 10;
