@@ -19,8 +19,6 @@
 
 // Max knob offset from centre — base half (65) minus halo half (31), so
 // neither the knob nor its halo ever leaves the 130px joystick frame.
-#define JOY_RADIUS 34
-#define JOY_DEADZONE 10   // px from centre before a direction counts as pressed
 
 // Intro overlay loading bar — slim rounded track with a gradient fill.
 // The fill sits inside the track's 1px border + 2px padding (3px inset/side).
@@ -612,9 +610,9 @@ static void joy_event(lv_event_t *e)
         int dy = pt.y - (coords.y1 + coords.y2) / 2;
 
         float mag = sqrtf((float)(dx * dx + dy * dy));
-        if(mag > JOY_RADIUS) {
-            dx = (int)(dx * JOY_RADIUS / mag);
-            dy = (int)(dy * JOY_RADIUS / mag);
+        if(mag > JOY_RADIUS_PX) {
+            dx = (int)(dx * JOY_RADIUS_PX / mag);
+            dy = (int)(dy * JOY_RADIUS_PX / mag);
         }
 
         lv_obj_align(s_knob, LV_ALIGN_CENTER, dx, dy);
@@ -622,14 +620,19 @@ static void joy_event(lv_event_t *e)
         lv_obj_set_style_transform_zoom(s_knob, 210, 0);
         lv_obj_set_style_bg_color(s_knob, lv_color_hex(COL_ACCENT), 0);
 
-        s_joy_x =  (int16_t)((dx * 255) / JOY_RADIUS);
-        s_joy_y = -(int16_t)((dy * 255) / JOY_RADIUS);
+        if(mag <= JOY_DEADZONE_PX) {
+            s_joy_x = 0;
+            s_joy_y = 0;
+        } else {
+            s_joy_x =  (int16_t)((dx * 255) / JOY_RADIUS_PX);
+            s_joy_y = -(int16_t)((dy * 255) / JOY_RADIUS_PX);
+        }
 
         uint8_t cmd = CMD_STOP;
-        if(dy < -JOY_DEADZONE) cmd |= CMD_FORWARD;
-        if(dy >  JOY_DEADZONE) cmd |= CMD_BACKWARD;
-        if(dx < -JOY_DEADZONE) cmd |= CMD_LEFT;
-        if(dx >  JOY_DEADZONE) cmd |= CMD_RIGHT;
+        if(dy < -JOY_DEADZONE_PX) cmd |= CMD_FORWARD;
+        if(dy >  JOY_DEADZONE_PX) cmd |= CMD_BACKWARD;
+        if(dx < -JOY_DEADZONE_PX) cmd |= CMD_LEFT;
+        if(dx >  JOY_DEADZONE_PX) cmd |= CMD_RIGHT;
         update_cmd_badges(cmd);
     } else {
         lv_obj_align(s_knob, LV_ALIGN_CENTER, 0, 0);
@@ -730,9 +733,9 @@ static lv_obj_t *make_slider_row(lv_obj_t *panel, const char *key, const char *i
 
     lv_obj_t *v = make_label(panel, init_val, &st_fg_accent, NULL);
     lv_obj_set_style_text_letter_space(v, 2, 0);
-    lv_obj_set_width(v, 48);
+    lv_obj_set_width(v, 64);
     lv_obj_set_style_text_align(v, LV_TEXT_ALIGN_RIGHT, 0);
-    lv_obj_set_pos(v, PAD + ROW_W - 48, y);
+    lv_obj_set_pos(v, PAD + ROW_W - 64, y);
 
     lv_obj_t *sl = lv_slider_create(panel);
     int32_t sl_w = ROW_W * 9 / 10;

@@ -17,14 +17,14 @@ static const char *TAG = "motor";
 static void motor_run(void *arg);
 
 // Converts joystick position to direction bitmask and speed (0-255).
-// Deadzone: ±112 (~44% of full deflection). Speed = magnitude of (x,y).
+// Deadzone is enforced on the screen side; x=0,y=0 maps to CMD_STOP here.
 static void joy_to_motor(int16_t x, int16_t y, uint8_t *cmd, uint8_t *speed)
 {
     *cmd = CMD_STOP;
-    if(y >  80) *cmd |= CMD_FORWARD;
-    if(y < -80) *cmd |= CMD_BACKWARD;
-    if(x < -80) *cmd |= CMD_LEFT;
-    if(x >  80) *cmd |= CMD_RIGHT;
+    if(y > 0) *cmd |= CMD_FORWARD;
+    if(y < 0) *cmd |= CMD_BACKWARD;
+    if(x < 0) *cmd |= CMD_LEFT;
+    if(x > 0) *cmd |= CMD_RIGHT;
     float mag = sqrtf((float)(x * x + y * y));
     *speed = (*cmd == CMD_STOP) ? 0 : (mag > 255.0f ? 255 : (uint8_t)mag);
 }

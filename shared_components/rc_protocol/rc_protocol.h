@@ -15,6 +15,11 @@ typedef struct __attribute__((packed)) {
     int16_t y;
 } joy_pkt_t;
 
+// Joystick geometry — shared so screen and cam use identical scaling
+#define JOY_RADIUS_PX    34
+#define JOY_DEADZONE_PX  10
+#define JOY_SPEED_MIN    ((JOY_DEADZONE_PX * 255) / JOY_RADIUS_PX)  // = 75
+
 // Motor direction bitmask — cam-internal; derived from joy_pkt_t on the cam side
 #define CMD_STOP     0x00
 #define CMD_FORWARD  0x01

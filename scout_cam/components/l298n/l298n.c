@@ -17,7 +17,7 @@
 #define ENA_TIMER       LEDC_TIMER_1      // TIMER_0/CHANNEL_0 used by camera
 #define ENA_CHANNEL     LEDC_CHANNEL_1
 
-#define L298N_DUTY_MIN  178   // ≈ 2.3 V at 3.3 V logic
+#define L298N_DUTY_MIN  130   // ≈ 1.7 V at 3.3 V logic
 #define L298N_DUTY_MAX  255
 
 void l298n_init(void)
@@ -57,8 +57,16 @@ void l298n_init(void)
 
 void l298n_apply(uint8_t cmd, uint8_t speed)
 {
-    uint8_t duty = speed == 0 ? 0
-                 : (uint8_t)(L298N_DUTY_MIN + (uint32_t)speed * (L298N_DUTY_MAX - L298N_DUTY_MIN) / 255);
+    uint8_t duty;
+    if(speed == 0) {
+        duty = 0;
+    } else if(speed <= JOY_SPEED_MIN) {
+        duty = L298N_DUTY_MIN;
+    } else {
+        duty = (uint8_t)(L298N_DUTY_MIN +
+               (uint32_t)(speed - JOY_SPEED_MIN) * (L298N_DUTY_MAX - L298N_DUTY_MIN) /
+               (255 - JOY_SPEED_MIN));
+    }
     ledc_set_duty(ENA_SPEED_MODE, ENA_CHANNEL, duty);
     ledc_update_duty(ENA_SPEED_MODE, ENA_CHANNEL);
 
