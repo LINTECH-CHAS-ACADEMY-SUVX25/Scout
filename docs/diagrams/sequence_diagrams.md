@@ -80,7 +80,7 @@ sequenceDiagram
         SR->>SR: cfg_tx_learn(&src)
         Note right of SR: Records camera IP\n(used for RC and config commands)
         SR->>FB: frame_pool_publish(frame_len)
-        Note right of FB: Flips to next\nping-pong buffer;\nnotifies render task
+        Note right of FB: Flips to next\nping-pong buffer,\nnotifies render task
     end
 
     RR->>FB: frame_pool_try_acquire(&src, &src_len)
@@ -124,7 +124,7 @@ sequenceDiagram
     Note right of CC: joy_pkt_t: { int16_t x, y }\nUDP to CAM CMD_PORT 3335
 
     SR->>SR: rc_rx_process()
-    Note right of SR: Drains CMD_PORT socket;\nenqueues to motor_queue internally
+    Note right of SR: Drains CMD_PORT socket,\nenqueues to motor_queue internally
 
     SR->>NET: udp_try_recv(cmd_sock, &pkt, sizeof(pkt))
     NET-->>SR: joy_pkt
