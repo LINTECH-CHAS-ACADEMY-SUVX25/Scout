@@ -40,9 +40,6 @@
 #define INTRO_BAR_Y     96      // loading bar
 #define INTRO_TEXT_Y    122     // status + percentage row
 #define INTRO_RULE_W    300     // accent divider width
-#define INTRO_FRAME     28      // inset of the corner brackets from the screen edge
-#define INTRO_CORNER    34      // corner bracket arm length
-#define INTRO_TAG_DY    (INTRO_FRAME + INTRO_CORNER / 2 - 4) // header/footer text, vertically centred on the bracket
 #define INTRO_DOT_GAP   22      // spacing between boot-step dots
 #define INTRO_MAX_STEPS 12      // cap on dots built in scout_ui_intro_screen
 
@@ -1265,17 +1262,6 @@ void scout_ui_overlay(const char *text)
     }
 }
 
-// A header/footer hairline label on the intro overlay — small, wide-tracked,
-// sitting on the bare background to frame the hero like the top/bottom bars.
-static lv_obj_t *intro_frame_label(const char *text, lv_style_t *fg,
-                                   lv_align_t align, int32_t x, int32_t y)
-{
-    lv_obj_t *l = make_label(s_intro_overlay, text, fg, NULL);
-    lv_obj_set_style_text_letter_space(l, 2, 0);
-    lv_obj_align(l, align, x, y);
-    return l;
-}
-
 void scout_ui_intro_screen(uint8_t total_steps)
 {
     s_intro_total = total_steps ? total_steps : 1;
@@ -1287,33 +1273,6 @@ void scout_ui_intro_screen(uint8_t total_steps)
     lv_obj_add_style(s_intro_overlay, &st_fill_bg, 0);
     lv_obj_set_size(s_intro_overlay, SCREEN_W, SCREEN_H);
     lv_obj_set_pos(s_intro_overlay, 0, 0);
-
-    // Viewfinder brackets at the four corners — the signature framing motif.
-    make_corner(s_intro_overlay, INTRO_FRAME, INTRO_FRAME,
-                INTRO_CORNER, LV_BORDER_SIDE_LEFT | LV_BORDER_SIDE_TOP, LV_OPA_50);
-    make_corner(s_intro_overlay, SCREEN_W - INTRO_FRAME - INTRO_CORNER, INTRO_FRAME,
-                INTRO_CORNER, LV_BORDER_SIDE_RIGHT | LV_BORDER_SIDE_TOP, LV_OPA_50);
-    make_corner(s_intro_overlay, INTRO_FRAME, SCREEN_H - INTRO_FRAME - INTRO_CORNER,
-                INTRO_CORNER, LV_BORDER_SIDE_LEFT | LV_BORDER_SIDE_BOTTOM, LV_OPA_50);
-    make_corner(s_intro_overlay, SCREEN_W - INTRO_FRAME - INTRO_CORNER,
-                SCREEN_H - INTRO_FRAME - INTRO_CORNER,
-                INTRO_CORNER, LV_BORDER_SIDE_RIGHT | LV_BORDER_SIDE_BOTTOM, LV_OPA_50);
-
-    // Header hairline: maker brand left, boot tag right — vertically centred
-    // on the corner brackets.
-    intro_frame_label("LINTECH", &st_fg_lo,
-                      LV_ALIGN_TOP_LEFT, INTRO_FRAME + 14, INTRO_TAG_DY);
-    intro_frame_label("BOOT SEQUENCE", &st_fg_lo,
-                      LV_ALIGN_TOP_RIGHT, -(INTRO_FRAME + 14), INTRO_TAG_DY);
-
-    // Footer hairline: firmware version left, RTOS tag right (accent value),
-    // matching the bottom bar's RTOS | FREERTOS cluster.
-    intro_frame_label("FW v1.0.0", &st_fg_lo,
-                      LV_ALIGN_BOTTOM_LEFT, INTRO_FRAME + 14, -INTRO_TAG_DY);
-    intro_frame_label("FREERTOS", &st_fg_accent,
-                      LV_ALIGN_BOTTOM_RIGHT, -(INTRO_FRAME + 14), -INTRO_TAG_DY);
-    intro_frame_label("RTOS", &st_fg_lo,
-                      LV_ALIGN_BOTTOM_RIGHT, -(INTRO_FRAME + 106), -INTRO_TAG_DY);
 
     // Hero wordmark.
     lv_obj_t *logo = make_label(s_intro_overlay, "SCOUT", &st_fg_accent, &st_font_logo);
