@@ -123,6 +123,12 @@ static const ui_theme_t s_themes[] = {
       .text_hi = 0xE3F2E8, .text_mid = 0x96B7A1, .text_lo = 0x567A64,
       .good = 0x34D399, .bad = 0xF87171,
       .badge_bg = 0x12291B, .badge_on = 0x0E2415 },
+    { .name = "ARCTIC",
+      .bg = 0xEFF4F8, .bar = 0xE4EBF3, .panel = 0xD8E2EE, .line = 0xA6BCCC,
+      .accent = 0x0077B6, .accent_deep = 0x005F8F,
+      .text_hi = 0x0A1628, .text_mid = 0x2A4260, .text_lo = 0x587A90,
+      .good = 0x059669, .bad = 0xDC2626,
+      .badge_bg = 0xC8D6E4, .badge_on = 0xB5C4D8 },
 };
 #define THEME_COUNT (sizeof(s_themes) / sizeof(s_themes[0]))
 
