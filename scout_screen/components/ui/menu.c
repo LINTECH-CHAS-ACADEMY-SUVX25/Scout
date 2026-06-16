@@ -64,6 +64,11 @@ void ui_menu_toggle(void)
     }
 }
 
+void ui_menu_close(void)
+{
+    lv_obj_add_flag(s_theme_menu, LV_OBJ_FLAG_HIDDEN);
+}
+
 void menu_set_active(uint8_t idx)
 {
     for(uint8_t i = 0; i < THEME_COUNT; i++)

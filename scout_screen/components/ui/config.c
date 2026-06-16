@@ -116,6 +116,12 @@ void ui_config_toggle(void)
     }
 }
 
+void ui_config_close(void)
+{
+    s_config_open = false;
+    lv_obj_add_flag(s_cfg_panel, LV_OBJ_FLAG_HIDDEN);
+}
+
 bool scout_ui_cfg_dirty_take(void)
 {
     bool d = s_cfg_dirty;

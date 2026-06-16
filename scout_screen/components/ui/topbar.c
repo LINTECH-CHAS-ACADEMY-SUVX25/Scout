@@ -24,8 +24,8 @@ static lv_obj_t *make_wifi_arc(lv_obj_t *parent, int32_t d, int32_t cx, int32_t 
     return a;
 }
 
-static void config_event(lv_event_t *e) { (void)e; ui_config_toggle(); }
-static void themes_event(lv_event_t *e) { (void)e; ui_menu_toggle(); }
+static void config_event(lv_event_t *e) { (void)e; ui_menu_close();   ui_config_toggle(); }
+static void themes_event(lv_event_t *e) { (void)e; ui_config_close(); ui_menu_toggle(); }
 
 void topbar_build(void)
 {
