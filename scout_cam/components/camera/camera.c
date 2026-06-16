@@ -113,11 +113,16 @@ bool camera_apply_setting(uint8_t cmd, int8_t value)
     sensor_t *s = esp_camera_sensor_get();
     if(!s) { ESP_LOGW(TAG, "sensor unavailable"); return false; }
     switch(cmd) {
-        case CAM_CTRL_SET_QUALITY:        s->set_quality(s, value);         break;
-        case CAM_CTRL_SET_BRIGHTNESS:     s->set_brightness(s, value);      break;
-        case CAM_CTRL_SET_CONTRAST:       s->set_contrast(s, value);        break;
-        case CAM_CTRL_SET_SATURATION:     s->set_saturation(s, value);      break;
-        case CAM_CTRL_SET_HMIRROR:        s->set_hmirror(s, value);         break;
+        case CAM_CTRL_SET_QUALITY:        s->set_quality(s, value);          break;
+        case CAM_CTRL_SET_AE_LEVEL:
+            if(value == 0) { s->set_exposure_ctrl(s, 1); }
+            else           { s->set_exposure_ctrl(s, 0); s->set_aec_value(s, value * 100); }
+            break;
+        case CAM_CTRL_SET_AGC_GAIN:
+            if(value == 0) { s->set_gain_ctrl(s, 1); }
+            else           { s->set_gain_ctrl(s, 0); s->set_agc_gain(s, value * 3); }
+            break;
+        case CAM_CTRL_SET_HMIRROR:        s->set_hmirror(s, value);          break;
         case CAM_CTRL_SET_VFLIP:          s->set_vflip(s, value);           break;
         case CAM_CTRL_SET_SPECIAL_EFFECT: s->set_special_effect(s, value);  break;
         default: return false;

@@ -40,9 +40,8 @@ typedef enum __attribute__((packed)) {
     CAM_CTRL_SENSOR_ON          = 0x03,
     CAM_CTRL_SENSOR_OFF         = 0x04,
     CAM_CTRL_SET_QUALITY        = 0x10,  // 0-63 (lower = better JPEG)
-    CAM_CTRL_SET_BRIGHTNESS     = 0x11,  // -2..2
-    CAM_CTRL_SET_CONTRAST       = 0x12,  // -2..2
-    CAM_CTRL_SET_SATURATION     = 0x13,  // -2..2
+    CAM_CTRL_SET_AE_LEVEL       = 0x11,  // 0-10 (0 = re-enable AEC; 1-10 = manual exposure, aec_value=value*100)
+    CAM_CTRL_SET_AGC_GAIN       = 0x12,  // 0-10 (0 = re-enable AGC; 1-10 = agc_gain=value*3)
     CAM_CTRL_SET_HMIRROR        = 0x14,  // 0 or 1
     CAM_CTRL_SET_VFLIP          = 0x15,  // 0 or 1
     CAM_CTRL_SET_SPECIAL_EFFECT = 0x16,  // 0-6

@@ -40,4 +40,4 @@ bool scout_ui_cfg_dirty_take(void);
 
 // Reads current config panel widget values. Only valid after scout_ui_init.
 void scout_ui_get_cam_cfg(bool *cam_on, int8_t *quality,
-                           int8_t *brightness, int8_t *contrast, int8_t *saturation);
+                           int8_t *ae_level, int8_t *agc_gain);

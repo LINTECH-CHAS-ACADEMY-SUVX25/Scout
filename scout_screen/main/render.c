@@ -79,13 +79,12 @@ static void render_run(void *arg)
 
         if(scout_ui_cfg_dirty_take()) {
             bool cam_on;
-            int8_t quality, brightness, contrast, saturation;
-            scout_ui_get_cam_cfg(&cam_on, &quality, &brightness, &contrast, &saturation);
+            int8_t quality, ae_level, agc_gain;
+            scout_ui_get_cam_cfg(&cam_on, &quality, &ae_level, &agc_gain);
             cfg_tx_push(cam_on ? CAM_CTRL_CAMERA_ON : CAM_CTRL_CAMERA_OFF, 0);
-            cfg_tx_push(CAM_CTRL_SET_QUALITY,    quality);
-            cfg_tx_push(CAM_CTRL_SET_BRIGHTNESS, brightness);
-            cfg_tx_push(CAM_CTRL_SET_CONTRAST,   contrast);
-            cfg_tx_push(CAM_CTRL_SET_SATURATION, saturation);
+            cfg_tx_push(CAM_CTRL_SET_QUALITY,  quality);
+            cfg_tx_push(CAM_CTRL_SET_AE_LEVEL, ae_level);
+            cfg_tx_push(CAM_CTRL_SET_AGC_GAIN, agc_gain);
         }
         cfg_tx_flush();
 

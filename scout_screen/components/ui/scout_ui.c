@@ -197,9 +197,8 @@ static bool      s_config_open;
 
 static lv_obj_t     *s_cam_sw;
 static lv_obj_t     *s_quality_sl;
-static lv_obj_t     *s_bright_sl;
-static lv_obj_t     *s_contrast_sl;
-static lv_obj_t     *s_sat_sl;
+static lv_obj_t     *s_ae_lvl_sl;
+static lv_obj_t     *s_gain_sl;
 static volatile bool s_cfg_dirty;
 
 static void fmt_temp(char *out, size_t n, const cam_diag_pkt_t *d)
@@ -684,17 +683,6 @@ static void themes_event(lv_event_t *e)
 
 // Config panel — full camera height, button pinned near the bottom.
 #define CFG_PANEL_H CAM_H
-#define CFG_BTN_H   24
-#define CFG_BTN_Y   (CFG_PANEL_H - CFG_BTN_H - 16)
-
-// APPLY closes the CONFIG panel.
-static void panel_close_event(lv_event_t *e)
-{
-    (void)e;
-    s_cfg_dirty = true;
-    lv_obj_add_flag(s_cfg_panel, LV_OBJ_FLAG_HIDDEN);
-    s_config_open = false;
-}
 
 // Toggles the CONFIG panel; registered to the CONFIG topbar label.
 static void config_event(lv_event_t *e)
@@ -709,29 +697,26 @@ static void config_event(lv_event_t *e)
     }
 }
 
-// Slider value callback — receives the paired value label as user_data and
-// reprints it as a plain signed integer when the slider moves.
-static void slider_num_event(lv_event_t *e)
+static const char *const s_quality_labels[] = {"LOW", "MEDIUM", "HIGH", "ULTRA"};
+
+static void quality_label_event(lv_event_t *e)
 {
     lv_obj_t *lbl = lv_event_get_user_data(e);
-    lv_label_set_text_fmt(lbl, "%d", (int)lv_slider_get_value(lv_event_get_target(e)));
+    int v = (int)lv_slider_get_value(lv_event_get_target(e));
+    lv_label_set_text(lbl, s_quality_labels[v]);
+    s_cfg_dirty = true;
 }
 
-// Accent-bordered APPLY button pinned to the bottom of a config panel.
-static void make_apply_btn(lv_obj_t *panel)
+static void autoval_label_event(lv_event_t *e)
 {
-    lv_obj_t *btn = lv_obj_create(panel);
-    lv_obj_add_style(btn, &st_btn, 0);
-    lv_obj_add_style(btn, &st_pressed, LV_STATE_PRESSED);
-    lv_obj_set_size(btn, ROW_W, CFG_BTN_H);
-    lv_obj_set_pos(btn, PAD, CFG_BTN_Y);
-    lv_obj_clear_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_event_cb(btn, panel_close_event, LV_EVENT_CLICKED, panel);
-
-    lv_obj_t *lbl = make_label(btn, "APPLY", &st_fg_accent, NULL);
-    lv_obj_set_style_text_letter_space(lbl, 4, 0);
-    lv_obj_align(lbl, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_t *lbl = lv_event_get_user_data(e);
+    int v = (int)lv_slider_get_value(lv_event_get_target(e));
+    if(v == 0) lv_label_set_text(lbl, "AUTO");
+    else       lv_label_set_text_fmt(lbl, "%d", v);
+    s_cfg_dirty = true;
 }
+
+static void cfg_sw_event(lv_event_t *e) { (void)e; s_cfg_dirty = true; }
 
 // Config slider row: key label left, live value label right, themed slider below.
 // val_cb fires on LV_EVENT_VALUE_CHANGED and receives the value label as user_data.
@@ -745,13 +730,15 @@ static lv_obj_t *make_slider_row(lv_obj_t *panel, const char *key, const char *i
 
     lv_obj_t *v = make_label(panel, init_val, &st_fg_accent, NULL);
     lv_obj_set_style_text_letter_space(v, 2, 0);
-    lv_obj_set_width(v, 48);
+    lv_obj_set_width(v, 64);
     lv_obj_set_style_text_align(v, LV_TEXT_ALIGN_RIGHT, 0);
-    lv_obj_set_pos(v, PAD + ROW_W - 48, y);
+    lv_obj_set_pos(v, PAD + ROW_W - 64, y);
 
     lv_obj_t *sl = lv_slider_create(panel);
-    lv_obj_set_size(sl, ROW_W, 4);
-    lv_obj_set_pos(sl, PAD, y + 15);
+    int32_t sl_w = ROW_W * 9 / 10;
+    int32_t sl_x = (SIDE_W - sl_w) / 2;
+    lv_obj_set_size(sl, sl_w, 18);
+    lv_obj_set_pos(sl, sl_x, y + 15);
     lv_slider_set_range(sl, min, max);
     lv_slider_set_value(sl, def, LV_ANIM_OFF);
 
@@ -1142,12 +1129,9 @@ static void make_cam_corners(void)
 // topbar label is tapped. Holds the camera controls; rows map 1:1 to the
 // camera-control commands the cam node accepts (cam_ctrl_cmd_t):
 //   CAMERA     on/off switch        — CAM_CTRL_CAMERA_ON (0x01) / _OFF (0x02)
-//   QUALITY    slider 0-63, def 20  — CAM_CTRL_SET_QUALITY    (0x10, lower = better JPEG)
-//   BRIGHT     slider -2..2, def 0  — CAM_CTRL_SET_BRIGHTNESS (0x11)
-//   CONTRAST   slider -2..2, def 0  — CAM_CTRL_SET_CONTRAST   (0x12)
-//   SATURATION slider -2..2, def 0  — CAM_CTRL_SET_SATURATION (0x13)
-// The controls are presentational for now; wire each to its command over
-// CMD_PORT once the camera-control transport lands.
+//   QUALITY  slider 0-63,   def 20 — CAM_CTRL_SET_QUALITY  (0x10, lower = better JPEG)
+//   EXPOS  slider 0-10, def 0 (AUTO) — CAM_CTRL_SET_AE_LEVEL (0x11, 0=AEC on, 1-10=aec_value*100)
+//   GAIN   slider 0-10, def 0 (AUTO) — CAM_CTRL_SET_AGC_GAIN (0x12, 0=AGC on, 1-10=agc_gain*3)
 static void make_config_panel(void)
 {
     s_cfg_panel = make_panel(SCREEN_W - PANEL_GAP - SIDE_W, CAM_Y, SIDE_W, CFG_PANEL_H);
@@ -1155,16 +1139,14 @@ static void make_config_panel(void)
 
     make_section_hdr(s_cfg_panel, "CAM CONFIG", HDR_Y);
 
-    s_cam_sw      = make_switch_row(s_cfg_panel, "CAMERA", 68, true);
+    s_cam_sw     = make_switch_row(s_cfg_panel, "CAMERA", 68, true);
+    lv_obj_add_event_cb(s_cam_sw, cfg_sw_event, LV_EVENT_VALUE_CHANGED, NULL);
     make_cfg_sep(s_cfg_panel, 116);
-    s_quality_sl  = make_slider_row(s_cfg_panel, "QUALITY",    "20",  0, 63, 20, 148, slider_num_event);
+    s_quality_sl = make_slider_row(s_cfg_panel, "QUALITY", "MEDIUM", 0,  3, 1, 148, quality_label_event);
     make_cfg_sep(s_cfg_panel, 196);
-    s_bright_sl   = make_slider_row(s_cfg_panel, "BRIGHT",     " 0", -2,  2,  0, 228, slider_num_event);
+    s_ae_lvl_sl  = make_slider_row(s_cfg_panel, "EXPOS",   "AUTO",   0, 10, 0, 228, autoval_label_event);
     make_cfg_sep(s_cfg_panel, 276);
-    s_contrast_sl = make_slider_row(s_cfg_panel, "CONTRAST",   " 0", -2,  2,  0, 308, slider_num_event);
-    make_cfg_sep(s_cfg_panel, 356);
-    s_sat_sl      = make_slider_row(s_cfg_panel, "SATURATION", " 0", -2,  2,  0, 388, slider_num_event);
-    make_apply_btn(s_cfg_panel);
+    s_gain_sl    = make_slider_row(s_cfg_panel, "GAIN",    "AUTO",   0, 10, 0, 308, autoval_label_event);
 
     if(s_config_open) lv_obj_clear_flag(s_cfg_panel, LV_OBJ_FLAG_HIDDEN);
 }
@@ -1460,12 +1442,13 @@ bool scout_ui_cfg_dirty_take(void)
     return d;
 }
 
+static const int8_t s_quality_map[4] = {63, 30, 16, 4};
+
 void scout_ui_get_cam_cfg(bool *cam_on, int8_t *quality,
-                           int8_t *brightness, int8_t *contrast, int8_t *saturation)
+                           int8_t *ae_level, int8_t *agc_gain)
 {
-    *cam_on     = lv_obj_has_state(s_cam_sw, LV_STATE_CHECKED);
-    *quality    = (int8_t)lv_slider_get_value(s_quality_sl);
-    *brightness = (int8_t)lv_slider_get_value(s_bright_sl);
-    *contrast   = (int8_t)lv_slider_get_value(s_contrast_sl);
-    *saturation = (int8_t)lv_slider_get_value(s_sat_sl);
+    *cam_on   = lv_obj_has_state(s_cam_sw, LV_STATE_CHECKED);
+    *quality  = s_quality_map[lv_slider_get_value(s_quality_sl)];
+    *ae_level = (int8_t)lv_slider_get_value(s_ae_lvl_sl);
+    *agc_gain = (int8_t)lv_slider_get_value(s_gain_sl);
 }
