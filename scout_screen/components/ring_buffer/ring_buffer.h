@@ -19,5 +19,7 @@ int32_t     ring_last(const ring_buf_t *r);
 int32_t     ring_avg(const ring_buf_t *r);
 int32_t     ring_min(const ring_buf_t *r);
 int32_t     ring_max(const ring_buf_t *r);
+/** @brief Returns FPS × 10 computed from timestamps stored in the ring. */
 uint32_t    ring_fps_tenths(const ring_buf_t *r);
+/** @brief Returns last and avg in a single consistent snapshot. */
 stat_snap_t ring_snap(const ring_buf_t *r);
