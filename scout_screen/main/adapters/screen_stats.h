@@ -40,21 +40,22 @@ typedef struct {
     uint32_t    disp_fps_tenths;
 } screen_stats_t;
 
-// Wires ring pointers and flags into ctx for the render task.
-// Call once before render_run's loop starts.
+/** @brief Wires ring pointers and flags into ctx for the render task. Call once before the loop starts. */
 void screen_stats_render_tick_init(screen_tick_t *ctx);
 
-// Wires ctx for the stream task.
-// Call once before stream_run's loop starts.
+/** @brief Wires ctx for the stream task. Call once before the loop starts. */
 void screen_stats_stream_tick_init(screen_tick_t *ctx);
 
-// Call at the top of any task loop. Commits the previous iteration's splits into the
-// ring buffers and starts a fresh timer. Records full loop time (tick-to-tick).
+/**
+ * @brief Call at the top of any task loop. Commits the previous iteration's splits into the
+ *        ring buffers and starts a fresh timer.
+ */
 void screen_stats_tick(screen_tick_t *ctx);
 
-// Records elapsed time since the previous split (or tick) into slot.
-// Pass a pointer to the named field: &ctx->lvgl, &ctx->decode, etc.
+/**
+ * @brief Records elapsed time since the previous split (or tick) into slot.
+ * @param slot Pointer to the named field: &ctx->lvgl, &ctx->decode, etc.
+ */
 void screen_stats_tick_split(screen_tick_t *ctx, tick_slot_t *slot);
 
-// Copies the latest metrics snapshot into out.
 void screen_stats_get(screen_stats_t *out);

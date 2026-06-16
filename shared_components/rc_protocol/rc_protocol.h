@@ -8,8 +8,10 @@
 #define VID_PORT    3334
 #define CMD_PORT    3335
 
-// Joystick packet — screen sends this to cam over CMD_PORT (4 bytes)
-// x: -255..255, positive = right; y: -255..255, positive = forward
+/**
+ * @brief Joystick packet sent from screen to cam over CMD_PORT (4 bytes).
+ *        x: -255..255, positive = right; y: -255..255, positive = forward.
+ */
 typedef struct __attribute__((packed)) {
     int16_t x;
     int16_t y;
@@ -22,9 +24,10 @@ typedef struct __attribute__((packed)) {
 #define CMD_LEFT     0x04
 #define CMD_RIGHT    0x08
 
-// Camera frame resolution — the cam crops the VGA (640x480) sensor frame to a centered
-// square via OV2640 windowing before sending (see scout_cam camera.c). Both nodes derive
-// buffer sizes and the screen blit region from these constants.
+/**
+ * @brief Camera frame resolution. The cam crops the VGA sensor to a centered square
+ *        via OV2640 windowing. Both nodes derive buffer sizes and blit region from these.
+ */
 #define CAM_W        480
 #define CAM_H        480
 
@@ -34,6 +37,7 @@ typedef struct __attribute__((packed)) {
 // Control port — screen sends cam_ctrl_pkt_t to cam to configure the camera or toggle features
 #define CTRL_PORT    3337
 
+/** @brief Camera control commands sent from screen to cam over CTRL_PORT. */
 typedef enum __attribute__((packed)) {
     CAM_CTRL_CAMERA_ON          = 0x01,
     CAM_CTRL_CAMERA_OFF         = 0x02,
@@ -52,8 +56,10 @@ typedef struct __attribute__((packed)) {
     int8_t  value; // used by SET_* commands; ignored for ON/OFF
 } cam_ctrl_pkt_t;
 
-// Diagnostics packet sent from scout_cam to scout_screen over DIAG_PORT.
-// Sensor fields (temp/humidity/pressure) are zero until BME280 is wired (#54).
+/**
+ * @brief Diagnostics packet sent from scout_cam to scout_screen over DIAG_PORT every 2 s.
+ *        Sensor fields are zero until BME280 is wired.
+ */
 typedef struct __attribute__((packed)) {
     int16_t  temp_cdeg;     // temperature in 0.01 °C
     uint8_t  humidity_pct;  // relative humidity 0-100 %
