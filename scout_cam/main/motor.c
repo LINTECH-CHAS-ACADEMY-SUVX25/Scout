@@ -18,7 +18,7 @@ static void motor_run(void *arg);
 
 // Converts joystick position to direction bitmask and speed (0-255).
 // Deadzone is enforced on the screen side; x=0,y=0 maps to CMD_STOP here.
-static void joy_to_motor(int16_t x, int16_t y, uint8_t *cmd, uint8_t *speed)
+void joy_to_motor(int16_t x, int16_t y, uint8_t *cmd, uint8_t *speed)
 {
     *cmd = CMD_STOP;
     if(y > 0) *cmd |= CMD_FORWARD;

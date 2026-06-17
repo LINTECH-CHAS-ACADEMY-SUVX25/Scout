@@ -29,6 +29,20 @@ jobs:
             scout_cam/main \
             scout_screen/main
 
+  unit-tests:
+    name: unit tests (host)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: cmake -B test/build test
+
+      - name: Run
+        run: |
+          cmake --build test/build
+          ./test/build/scout_tests
+
   build-cam:
     name: scout_cam (esp32)
     runs-on: ubuntu-latest
