@@ -9,6 +9,9 @@ managed_components/
 # Scout simulator build output
 scout-sim/build/
 
+# Host unit test build output
+test/build/
+
 # IDE / editor
 .vscode/
 *.swp
