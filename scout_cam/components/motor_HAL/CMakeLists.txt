@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "l298n.c"
+    SRCS "motor_driver.cpp"
     INCLUDE_DIRS "."
     REQUIRES rc_protocol esp_driver_gpio esp_driver_ledc
 )

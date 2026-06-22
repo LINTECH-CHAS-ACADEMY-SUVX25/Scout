@@ -3,6 +3,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 void motor_queue_init(void);
 
 /** @brief Enqueues a joystick packet. Thread-safe; drops and logs if the queue is full. */
@@ -13,3 +17,7 @@ void motor_queue_send(int16_t x, int16_t y);
  * @return true if a packet was received. Call from motor_run only.
  */
 bool motor_queue_recv(int16_t *x, int16_t *y, uint32_t timeout_ms);
+
+#ifdef __cplusplus
+}
+#endif

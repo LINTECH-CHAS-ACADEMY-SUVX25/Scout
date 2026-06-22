@@ -1,6 +1,10 @@
 #pragma once
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define WATCHDOG_TIMEOUT_MS 5000
 
 typedef struct {
@@ -18,3 +22,7 @@ void watchdog_init(const watchdog_config_t *cfg);
 
 void watchdog_register(void);
 void watchdog_reset(void);
+
+#ifdef __cplusplus
+}
+#endif
