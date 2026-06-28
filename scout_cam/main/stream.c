@@ -4,7 +4,7 @@
 #include "frag_tx.h"
 #include "camera.h"
 #include "motor_queue.h"
-#include "bme280.h"
+#include "telemetry.h"
 #include "watchdog.h"
 #include "udp.h"
 #include "rc_protocol.h"
@@ -64,7 +64,7 @@ static void stream_run(void *arg)
                 .uptime_s  = (uint32_t)(now_us / 1000000),
             };
             float t, h, p;
-            if(cam_status.sensor_enabled && bme280_read(&t, &h, &p)) {
+            if(cam_status.sensor_enabled && telemetry_read(&t, &h, &p)) {
                 pkt.temp_cdeg    = (int16_t)lroundf(t * 100.0f);
                 pkt.humidity_pct = (uint8_t)lroundf(h);
                 pkt.pressure_pa  = (uint32_t)lroundf(p);

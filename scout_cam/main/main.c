@@ -2,7 +2,7 @@
 #include "cam_state.h"
 #include "motor.h"
 #include "stream.h"
-#include "bme280.h"
+#include "telemetry.h"
 #include "watchdog.h"
 #include "reset_info.h"
 #include "freertos/FreeRTOS.h"
@@ -24,7 +24,7 @@ void app_main(void)
     cam_state_init();
     cam_state_camera_start();
     motor_init();
-    bme280_init();
+    telemetry_init();
     stream_init();
     vTaskDelete(NULL);
 }

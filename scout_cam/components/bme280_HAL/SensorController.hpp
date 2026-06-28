@@ -40,12 +40,21 @@ public:
 			ESP_LOGI(TAG_, "T: %u.%u DegC, P: %u Pa, H: %u %RH", reading.T/100, reading.T%100, reading.P/256, reading.H/1024);
 			tooHot_ = (reading.T/100 >= 25) ? true : false;
 			if(tooHot_) ESP_LOGW(TAG_, "För varmt! Öppna fönstret!");
+			last_ = reading;
+			valid_ = true;
 		}
 	}
 	bool getTooHot() { return tooHot_; }
+	bool getReading(sensorReading &out)
+	{
+		if(valid_) out = last_;
+		return valid_;
+	}
 private:
 	TSensor &sensor_;
 	bool tooHot_ = false;
+	sensorReading last_ = {};
+	bool valid_ = false;
 	const char *TAG_ = "SensorController";
 
 };

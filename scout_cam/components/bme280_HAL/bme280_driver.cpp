@@ -8,7 +8,7 @@ static const char *TAG = "BME280";
 
 #define I2C_FREQ_HZ 100000
 
-esp_err_t Bme280Sensor::init()
+esp_err_t bme280_sensor::init()
 {	
 	i2c_config_t conf = {};
 	conf.mode = I2C_MODE_MASTER;
@@ -25,7 +25,7 @@ esp_err_t Bme280Sensor::init()
 	return i2c_driver_install(port_, conf.mode, 0, 0, 0);
 }
 
-esp_err_t Bme280Sensor::write(uint8_t reg, uint8_t value)
+esp_err_t bme280_sensor::write(uint8_t reg, uint8_t value)
 {
 	i2c_cmd_handle_t cmd = i2c_cmd_link_create();
 	i2c_master_start(cmd);
@@ -38,7 +38,7 @@ esp_err_t Bme280Sensor::write(uint8_t reg, uint8_t value)
 	return err;
 }
 
-esp_err_t Bme280Sensor::read(uint8_t reg, uint8_t *data, size_t len)
+esp_err_t bme280_sensor::read(uint8_t reg, uint8_t *data, size_t len)
 {
 	if(data == NULL || len == 0) return ESP_ERR_INVALID_ARG;
 	
@@ -69,7 +69,7 @@ esp_err_t Bme280Sensor::read(uint8_t reg, uint8_t *data, size_t len)
 	return err;
 }
 
-esp_err_t Bme280Sensor::read_calibration()
+esp_err_t bme280_sensor::read_calibration()
 {
 	uint8_t buf[26];
 	
@@ -81,13 +81,13 @@ esp_err_t Bme280Sensor::read_calibration()
 	calib_.T3 = (int16_t)(buf[5] << 8) | buf[4];
 	calib_.P1 = (uint16_t)(buf[7] << 8) | buf[6];
 	calib_.P2 = (int16_t)(buf[9] << 8) | buf[8];
-	calib_.P2 = (int16_t)(buf[11] << 8) | buf[10];
-	calib_.P2 = (int16_t)(buf[13] << 8) | buf[12];
-	calib_.P2 = (int16_t)(buf[15] << 8) | buf[14];
-	calib_.P2 = (int16_t)(buf[17] << 8) | buf[16];
-	calib_.P2 = (int16_t)(buf[19] << 8) | buf[18];
-	calib_.P2 = (int16_t)(buf[21] << 8) | buf[20];
-	calib_.P2 = (int16_t)(buf[23] << 8) | buf[22];
+	calib_.P3 = (int16_t)(buf[11] << 8) | buf[10];
+	calib_.P4 = (int16_t)(buf[13] << 8) | buf[12];
+	calib_.P5 = (int16_t)(buf[15] << 8) | buf[14];
+	calib_.P6 = (int16_t)(buf[17] << 8) | buf[16];
+	calib_.P7 = (int16_t)(buf[19] << 8) | buf[18];
+	calib_.P8 = (int16_t)(buf[21] << 8) | buf[20];
+	calib_.P9 = (int16_t)(buf[23] << 8) | buf[22];
 	calib_.H1 = buf[25];
 	
 	err = this->read(0xE1, buf, 7);
@@ -104,7 +104,7 @@ esp_err_t Bme280Sensor::read_calibration()
 	return ESP_OK;
 }
 
-esp_err_t Bme280Sensor::start_measurement()
+esp_err_t bme280_sensor::start_measurement()
 {
 	esp_err_t err = this->write(0xF2, 0x01);
 	if(err != ESP_OK) return err;
@@ -114,7 +114,7 @@ esp_err_t Bme280Sensor::start_measurement()
 	return ESP_OK;
 }
 
-esp_err_t Bme280Sensor::read_raw_meas(raw_measurement_t *raw)
+esp_err_t bme280_sensor::read_raw_meas(raw_measurement_t *raw)
 {
 	uint8_t buf[8];
 	esp_err_t err = this->read(0xF7, buf, 8);
@@ -127,7 +127,7 @@ esp_err_t Bme280Sensor::read_raw_meas(raw_measurement_t *raw)
 	return ESP_OK;
 }
 
-int32_t Bme280Sensor::compensate_T(int32_t adc_T)
+int32_t bme280_sensor::compensate_T(int32_t adc_T)
 {
 	int32_t var1, var2, T;
 	var1 = ((((adc_T>>3) - ((int32_t)calib_.T1<<1))) * ((int32_t)calib_.T2)) >> 11;
@@ -137,7 +137,7 @@ int32_t Bme280Sensor::compensate_T(int32_t adc_T)
 	return T;
 }
 
-uint32_t Bme280Sensor::compensate_P(int32_t adc_P)
+uint32_t bme280_sensor::compensate_P(int32_t adc_P)
 {
 	int64_t var1, var2, P;
 	var1 = ((int64_t)t_fine_) - 128000;
@@ -155,7 +155,7 @@ uint32_t Bme280Sensor::compensate_P(int32_t adc_P)
 	return (uint32_t) P;
 }
 
-uint32_t Bme280Sensor::compensate_H(int32_t adc_H)
+uint32_t bme280_sensor::compensate_H(int32_t adc_H)
 {
 	int32_t res;
 	
@@ -167,7 +167,7 @@ uint32_t Bme280Sensor::compensate_H(int32_t adc_H)
 	return (uint32_t) (res>>12);
 }
 
-esp_err_t Bme280Sensor::read_measurement(sensorReading &reading)
+esp_err_t bme280_sensor::read_measurement(sensorReading &reading)
 {
 	raw_measurement_t raw;
 	
