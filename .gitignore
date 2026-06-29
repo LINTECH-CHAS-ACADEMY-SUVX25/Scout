@@ -13,3 +13,4 @@ scout-sim/build/
 .vscode/
 *.swp
 *.swo
+test/build/
