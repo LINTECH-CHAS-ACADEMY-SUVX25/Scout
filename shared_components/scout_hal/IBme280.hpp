@@ -1,6 +1,7 @@
 #pragma once
 
-class IBme280 {
+class IBme280
+{
 public:
     virtual ~IBme280() = default;
     virtual bool init() = 0;
